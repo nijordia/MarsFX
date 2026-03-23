@@ -1,0 +1,120 @@
+version: 2
+
+models:
+  - name: stg_fx_ticks
+    description: |
+      Staging model for raw FX tick data from Iceberg table.
+
+      Transformations applied:
+      - Cast all columns to proper data types
+      - Extract base_currency and quote_currency from currency_pair
+      - Apply data quality filters (prices > 0, ask >= bid)
+      - Standardize column names
+
+      Source: iceberg.fx_data.raw_ticks
+
+    meta:
+      owner: "data-engineering"
+
+    columns:
+      - name: tick_id
+        description: "Unique identifier for each tick (UUID)"
+        tests:
+          - unique
+          - not_null
+
+      - name: transaction_timestamp
+        description: "Timestamp when the trade occurred (microsecond precision)"
+        tests:
+          - not_null
+
+      - name: event_time
+        description: "Kafka event timestamp"
+
+      - name: processing_time
+        description: "Timestamp when tick was processed (Arroyo or batch)"
+
+      - name: currency_pair
+        description: "Currency pair symbol (e.g., ECR/MRT)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ECR/MRT', 'ECR/LCR', 'ECR/AMC', 'MRT/LCR', 'MRT/AMC', 'LCR/AMC']
+
+      - name: base_currency
+        description: "Base currency code (extracted from currency_pair)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ECR', 'MRT', 'LCR', 'AMC']
+
+      - name: quote_currency
+        description: "Quote currency code (extracted from currency_pair)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ECR', 'MRT', 'LCR', 'AMC']
+
+      - name: bid_price
+        description: "Best bid price at transaction time"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0.0001
+              max_value: 1000000
+              config:
+                severity: warn
+
+      - name: ask_price
+        description: "Best ask price at transaction time"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0.0001
+              max_value: 1000000
+              config:
+                severity: warn
+
+      - name: mid_price
+        description: "Mid price ((bid + ask) / 2)"
+        tests:
+          - not_null
+
+      - name: trade_price
+        description: "Actual execution price for this trade"
+        tests:
+          - not_null
+
+      - name: spread_bps
+        description: "Bid-ask spread in basis points"
+
+      - name: volume
+        description: "Trade volume/size"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+      - name: exchange_location
+        description: "Exchange where the trade occurred"
+
+      - name: trader_type
+        description: "Type of market participant"
+        tests:
+          - accepted_values:
+              values: ['institutional', 'retail', 'mining_corp', 'government']
+              config:
+                severity: warn
+
+    tests:
+      # Ask price should be >= bid price
+      - dbt_utils.expression_is_true:
+          expression: "ask_price >= bid_price"
+          config:
+            severity: error
+
+      # Mid price should be between bid and ask
+      - dbt_utils.expression_is_true:
+          expression: "mid_price >= bid_price and mid_price <= ask_price"
+          config:
+            severity: warn

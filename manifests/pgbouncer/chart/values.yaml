@@ -1,0 +1,58 @@
+# PgBouncer Helm chart values
+
+replicaCount: 1
+
+image:
+  repository: edoburu/pgbouncer
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 5432
+  targetPort: 5432
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Configuration from secret
+configSecret:
+  name: pgbouncer-secret
+  iniKey: pgbouncer.ini
+  userlistKey: userlist.txt
+
+# Liveness and readiness probes
+livenessProbe:
+  enabled: true
+  tcpSocket:
+    port: 5432
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  tcpSocket:
+    port: 5432
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Security context
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  runAsNonRoot: true
+
+# Node selector and affinity
+nodeSelector: {}
+tolerations: []
+affinity: {}

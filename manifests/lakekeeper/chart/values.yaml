@@ -1,0 +1,56 @@
+# Wrapper chart values for Lakekeeper
+# All values are nested under 'lakekeeper' to match the subchart alias
+
+lakekeeper:
+  # Disable Helm hooks for migrations to make them synchronous
+  helmWait: false
+
+  # Image configuration
+  catalog:
+    image:
+      repository: quay.io/lakekeeper/catalog
+      tag: v0.10.4
+      pullPolicy: IfNotPresent
+      uid: 65532
+      gid: 65534
+
+    replicas: 1
+
+    service:
+      type: ClusterIP
+      externalPort: 8181
+
+  # External PostgreSQL configuration (via PgBouncer)
+  externalDatabase:
+    type: postgres
+    host_read: pgbouncer.data-pgbouncer.svc.cluster.local
+    host_write: pgbouncer.data-pgbouncer.svc.cluster.local
+    port: 5432
+    database: lakekeeper
+    user: lakekeeper
+    passwordSecret: lakekeeper-postgres-password
+    passwordSecretKey: password
+
+  # Disable embedded PostgreSQL
+  postgresql:
+    enabled: false
+
+  # Secret backend configuration
+  secretBackend:
+    type: "Postgres"
+    postgres:
+      encryptionKeySecret: lakekeeper-postgres-encryption
+      encryptionKeySecretKey: encryptionKey
+
+  # Authorization (allow all for local dev)
+  authz:
+    backend: "allowall"
+
+  # Storage configuration
+  storage:
+    type: s3
+    s3:
+      endpoint: http://minio.data-storage.svc.cluster.local:9000
+      region: us-east-1
+      pathStyleAccess: true
+      bucket: lakehouse

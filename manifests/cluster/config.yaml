@@ -1,0 +1,119 @@
+# kind cluster configuration for MarsFX
+# Creates a multi-node cluster with proper ingress port mappings
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: marsfx
+
+# Networking configuration
+networking:
+  # Disable kind's default CNI to allow custom networking if needed
+  disableDefaultCNI: false
+  # Pod subnet for the cluster
+  podSubnet: "10.244.0.0/16"
+  # Service subnet for the cluster
+  serviceSubnet: "10.96.0.0/12"
+  # API server is accessible on localhost
+  apiServerAddress: "127.0.0.1"
+  apiServerPort: 6443
+
+# Node definitions
+nodes:
+  # Control plane node with ingress port mappings
+  - role: control-plane
+    # Extra port mappings for ingress and services
+    extraPortMappings:
+      # HTTP ingress
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      # HTTPS ingress
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+      # Trino UI
+      - containerPort: 30080
+        hostPort: 8080
+        protocol: TCP
+      # MinIO Console
+      - containerPort: 30900
+        hostPort: 9001
+        protocol: TCP
+      # MinIO API
+      - containerPort: 30901
+        hostPort: 9000
+        protocol: TCP
+      # Lakekeeper REST API
+      - containerPort: 30181
+        hostPort: 8181
+        protocol: TCP
+      # PostgreSQL
+      - containerPort: 30432
+        hostPort: 5432
+        protocol: TCP
+      # Kafka (will be added later)
+      - containerPort: 30092
+        hostPort: 9092
+        protocol: TCP
+      # Dagster UI (will be added later)
+      - containerPort: 30300
+        hostPort: 3000
+        protocol: TCP
+
+    # Add node labels for pod scheduling
+    labels:
+      node-role: control-plane
+      workload: infrastructure
+
+    # Kubernetes configuration patches
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+
+    # Resource limits for control plane
+    # Adjust based on your host machine capacity
+    extraMounts:
+      # Mount for persistent storage (optional)
+      - hostPath: /tmp/marsfx-data
+        containerPath: /data
+        readOnly: false
+
+  # Worker node 1 - Data processing workloads
+  - role: worker
+    labels:
+      node-role: worker
+      workload: data-processing
+      zone: compute-1
+    # Uncomment to set resource limits
+    # kubeadmConfigPatches:
+    #   - |
+    #     kind: JoinConfiguration
+    #     nodeRegistration:
+    #       kubeletExtraArgs:
+    #         system-reserved: memory=2Gi,cpu=500m
+    #         eviction-hard: memory.available<500Mi
+
+  # Worker node 2 - Data storage workloads
+  - role: worker
+    labels:
+      node-role: worker
+      workload: data-storage
+      zone: storage-1
+    extraMounts:
+      # Additional mount for storage-intensive workloads
+      - hostPath: /tmp/marsfx-storage
+        containerPath: /storage
+        readOnly: false
+
+# Feature gates (optional, for enabling experimental features)
+# featureGates:
+#   # Example: Enable dual-stack networking
+#   "IPv6DualStack": true
+
+# Runtime configuration (containerd is default in kind)
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5000"]
+      endpoint = ["http://localhost:5000"]

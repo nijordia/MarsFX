@@ -1,0 +1,11 @@
+apiVersion: v2
+name: lakekeeper
+type: application
+description: Wrapper chart for Lakekeeper - Iceberg REST Catalog
+version: 1.0.0
+appVersion: "v0.10.4"
+dependencies:
+  - name: lakekeeper
+    version: 0.7.1
+    repository: https://lakekeeper.github.io/lakekeeper-charts/
+    alias: lakekeeper

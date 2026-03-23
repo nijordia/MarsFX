@@ -1,0 +1,74 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-uploader
+  namespace: data-storage
+  labels:
+    app: minio-uploader
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: minio-uploader
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-minio
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for MinIO to be ready..."
+              until nc -z minio.data-storage.svc.cluster.local 9000; do
+                echo "MinIO not ready yet, waiting..."
+                sleep 2
+              done
+              echo "MinIO is ready!"
+      containers:
+        - name: mc-client
+          image: minio/mc:latest
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Configuring MinIO client..."
+
+              # Configure mc alias
+              mc alias set marsfx http://minio.data-storage.svc.cluster.local:9000 \
+                $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
+
+              echo "Creating lakehouse bucket..."
+              mc mb marsfx/lakehouse --ignore-existing
+
+              echo "Setting bucket versioning..."
+              mc version enable marsfx/lakehouse
+
+              echo "Setting bucket policy (public read for testing)..."
+              mc anonymous set download marsfx/lakehouse
+
+              echo "Directory structure will be created automatically when data is written."
+
+              echo "MinIO setup complete!"
+              mc ls marsfx/
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: root-user
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: root-password
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

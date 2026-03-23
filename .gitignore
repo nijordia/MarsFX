@@ -1,0 +1,254 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+*.cover
+*.log
+
+# Python virtual environments
+venv/
+.venv/
+ENV/
+env/
+virtualenv/
+.virtualenv/
+poetry.lock
+
+# dbt artifacts
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml
+dbt/profiles.yml.backup
+
+# DuckDB files (if used for local testing)
+*.duckdb
+*.duckdb.wal
+*.duckdb-shm
+*.duckdb-journal
+local.duckdb*
+
+# Dagster artifacts
+dagster/.dagster_home/
+dagster/dagster_home/
+dagster/tmpfiles/
+dagster/history/
+dagster/schedules/
+dagster/storage/
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+.project
+.classpath
+.settings/
+.metadata/
+*.sublime-project
+*.sublime-workspace
+.code-workspace
+
+# Docker artifacts
+*.tar
+*.tar.gz
+*.log
+docker-compose.override.yml
+.dockerignore.backup
+
+# Kubernetes temporary files
+*.yaml~
+*.yml~
+*.backup.yaml
+*.backup.yml
+.kube/
+
+# Helm artifacts
+charts/
+*.lock
+requirements.lock
+Chart.lock
+
+# Terraform state files (if used later)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Environment files
+.env
+.env.*
+.envrc
+*.env
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Data files (large datasets should not be committed)
+data/
+*.csv
+*.parquet
+*.arrow
+*.feather
+!dbt/seeds/*.csv
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Secrets and credentials
+secrets/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+*-key.json
+*-credentials.yaml
+
+# MinIO/S3 local data
+minio-data/
+s3-data/
+lakehouse/
+
+# PostgreSQL data
+postgres-data/
+pg_data/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+*.ipynb
+
+# Airflow artifacts (if used)
+airflow.db
+airflow-webserver.pid
+airflow.cfg.backup
+unittests.cfg
+
+# Spark artifacts (if used later)
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Kafka data (local dev)
+kafka-data/
+zookeeper-data/
+
+# Node modules (if any JS tooling)
+node_modules/
+npm-debug.log
+yarn.lock
+package-lock.json
+
+# macOS specific
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux specific
+.directory
+.Trash-*/
+
+# Backup files
+*.backup
+*.old
+*.orig
+
+# Compiled files
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Archives
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Test coverage
+.coverage
+coverage.xml
+*.cover
+
+# MyPy type checker
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# Local development overrides
+local-config.yaml
+local-values.yaml
+dev-overrides/

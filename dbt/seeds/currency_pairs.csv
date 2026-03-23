@@ -1,0 +1,7 @@
+base_currency,quote_currency,pair_symbol,min_trade_size,max_trade_size,tick_size,is_active,base_price_estimate,avg_daily_volatility,primary_exchange,currency_full_name
+ECR,MRT,ECR/MRT,0.01,1000000.00,0.0001,true,2.45,0.15,Mars_Central_Exchange,Earth Credits to Mars Tokens
+ECR,LCR,ECR/LCR,0.01,1000000.00,0.0001,true,1.12,0.08,Lunar_Trading_Post,Earth Credits to Lunar Credits
+ECR,AMC,ECR/AMC,0.01,1000000.00,0.0001,true,0.87,0.22,Asteroid_Market,Earth Credits to Asteroid Mining Coins
+MRT,LCR,MRT/LCR,0.01,1000000.00,0.0001,true,0.46,0.12,Mars_Central_Exchange,Mars Tokens to Lunar Credits
+MRT,AMC,MRT/AMC,0.01,1000000.00,0.0001,true,0.36,0.18,Asteroid_Market,Mars Tokens to Asteroid Mining Coins
+LCR,AMC,LCR/AMC,0.01,1000000.00,0.0001,true,0.78,0.14,Lunar_Trading_Post,Lunar Credits to Asteroid Mining Coins

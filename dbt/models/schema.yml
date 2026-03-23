@@ -1,0 +1,113 @@
+version: 2
+
+models:
+  - name: stg_fx_ticks
+    description: "Cleaned and standardized FX tick data from raw source"
+    columns:
+      - name: tick_id
+        description: "Unique identifier for each tick"
+        tests:
+          - unique
+          - not_null
+
+      - name: currency_pair
+        description: "Currency pair symbol"
+        tests:
+          - not_null
+
+      - name: transaction_timestamp
+        description: "When the trade occurred"
+        tests:
+          - not_null
+
+      - name: trade_price
+        description: "Trade execution price"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0.0001
+              max_value: 1000000
+
+      - name: trade_volume
+        description: "Trade volume"
+        tests:
+          - not_null
+
+      - name: base_currency
+        description: "Base currency code"
+        tests:
+          - accepted_values:
+              values: ['ECR', 'MRT', 'LCR', 'AMC']
+
+      - name: quote_currency
+        description: "Quote currency code"
+        tests:
+          - accepted_values:
+              values: ['ECR', 'MRT', 'LCR', 'AMC']
+
+  - name: ohlc_candles_1min
+    description: "1-minute OHLC candles aggregated from tick data"
+    columns:
+      - name: candle_timestamp
+        description: "Start of the 1-minute candle period"
+        tests:
+          - not_null
+
+      - name: currency_pair
+        description: "Currency pair symbol"
+        tests:
+          - not_null
+
+      - name: open_price
+        description: "First trade price in the period"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 1000000
+
+      - name: high_price
+        description: "Highest trade price in the period"
+        tests:
+          - not_null
+
+      - name: low_price
+        description: "Lowest trade price in the period"
+        tests:
+          - not_null
+
+      - name: close_price
+        description: "Last trade price in the period"
+        tests:
+          - not_null
+
+      - name: total_volume
+        description: "Total trading volume in the period"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+      - name: trade_count
+        description: "Number of trades in the period"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
+
+      - name: volatility_pct
+        description: "Price volatility as percentage of open price"
+
+      - name: price_change_pct
+        description: "Price change as percentage of open price"
+
+    # Unique combination test
+    tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ["currency_pair", "candle_timestamp"]
+
+      # Relationship test with staging
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          min_value: 1
+          config:
+            severity: warn

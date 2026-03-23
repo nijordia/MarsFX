@@ -1,0 +1,54 @@
+# dbt profile for MarsFX
+# Connects to Trino with Iceberg catalog
+
+mars_fx:
+  target: dev
+  outputs:
+    dev:
+      type: trino
+      method: none  # No authentication for local dev
+      host: trino.data-trino.svc.cluster.local
+      port: 8080
+      database: iceberg  # Catalog name
+      schema: fx_data    # Namespace/schema
+      threads: 4
+      http_scheme: http
+      session_properties:
+        # Query optimizations
+        query_max_memory: 3GB
+        query_max_memory_per_node: 1GB
+        # Iceberg optimizations
+        iceberg.split_size: 128MB
+        iceberg.min_split_size: 64MB
+        # Dynamic filtering
+        enable_dynamic_filtering: true
+
+    prod:
+      type: trino
+      method: none
+      host: trino.data-trino.svc.cluster.local
+      port: 8080
+      database: iceberg
+      schema: fx_data
+      threads: 8
+      http_scheme: http
+      session_properties:
+        query_max_memory: 5GB
+        query_max_memory_per_node: 2GB
+        iceberg.split_size: 256MB
+        iceberg.min_split_size: 128MB
+        enable_dynamic_filtering: true
+
+    # Local testing with port-forward
+    local:
+      type: trino
+      method: none
+      host: localhost
+      port: 8080
+      database: iceberg
+      schema: fx_data
+      threads: 2
+      http_scheme: http
+      session_properties:
+        query_max_memory: 1GB
+        query_max_memory_per_node: 512MB

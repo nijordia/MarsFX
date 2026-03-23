@@ -1,0 +1,131 @@
+name: 'mars_fx'
+version: '1.0.0'
+config-version: 2
+
+# This setting configures which "profile" dbt uses for this project.
+profile: 'mars_fx'
+
+# These configurations specify where dbt should look for different types of files.
+model-paths: ["models"]
+analysis-paths: ["analysis"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+  - "logs"
+
+# Require dbt version 1.7.0 or higher
+require-dbt-version: [">=1.7.0", "<2.0.0"]
+
+# Model configurations
+models:
+  mars_fx:
+    # All models materialized as views by default
+    +materialized: view
+    +on_schema_change: "fail"
+
+    # Staging models
+    staging:
+      +materialized: view
+      +schema: staging
+      +tags: ["staging"]
+      +docs:
+        node_color: "#4A90E2"
+
+    # Intermediate models
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+      +tags: ["intermediate"]
+
+    # Mart models (business-ready data)
+    marts:
+      +materialized: table
+      +schema: marts
+      +tags: ["marts"]
+      +docs:
+        node_color: "#50C878"
+
+      # OHLC candle models
+      ohlc:
+        +materialized: incremental
+        +incremental_strategy: merge
+        +on_schema_change: "fail"
+        +tags: ["ohlc", "incremental"]
+
+      # Metrics models
+      metrics:
+        +materialized: table
+        +tags: ["metrics"]
+
+# Seed configurations
+seeds:
+  mars_fx:
+    +schema: reference
+    +tags: ["reference"]
+    currency_pairs:
+      +column_types:
+        base_currency: varchar(10)
+        quote_currency: varchar(10)
+        pair_symbol: varchar(20)
+        min_trade_size: decimal(18,8)
+        max_trade_size: decimal(18,8)
+        tick_size: decimal(18,8)
+        is_active: boolean
+        base_price_estimate: decimal(18,8)
+        avg_daily_volatility: decimal(8,6)
+        primary_exchange: varchar(50)
+        currency_full_name: varchar(100)
+
+# Test configurations
+tests:
+  mars_fx:
+    +store_failures: true
+    +schema: test_failures
+
+# Snapshot configurations
+snapshots:
+  mars_fx:
+    +target_schema: snapshots
+    +strategy: timestamp
+    +unique_key: id
+    +updated_at: updated_at
+
+# Documentation
+docs:
+  mars_fx:
+    +node_color: "#7B68EE"
+
+# Variables
+vars:
+  # Incremental model lookback windows (for late-arriving data)
+  lookback_minutes:
+    "1min": 5    # Look back 5 minutes for 1-min candles
+    "5min": 15   # Look back 15 minutes for 5-min candles
+    "1h": 120    # Look back 2 hours for hourly candles
+    "1d": 1440   # Look back 1 day for daily candles
+
+  # FX currency pairs
+  currency_pairs: ['ECR/MRT', 'ECR/LCR', 'ECR/AMC', 'MRT/LCR', 'MRT/AMC', 'LCR/AMC']
+
+  # Start date for backfill (null = process all)
+  backfill_start_date: null
+
+  # Iceberg partition sizes
+  partition_specs:
+    ticks: "hour"      # Partition raw ticks by hour
+    candles_1min: "day"   # Partition 1-min candles by day
+    candles_5min: "day"
+    candles_1h: "month"
+    candles_1d: "year"
+
+# Dispatch configuration for package compatibility
+dispatch:
+  - macro_namespace: dbt_utils
+    search_order: ['mars_fx', 'dbt_utils']
+  - macro_namespace: dbt_expectations
+    search_order: ['mars_fx', 'dbt_expectations']

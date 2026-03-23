@@ -1,0 +1,315 @@
+version: 2
+
+models:
+  - name: ohlc_candles_1min
+    description: |
+      1-minute OHLC (Open-High-Low-Close) candles aggregated from raw FX tick data.
+      Each candle represents price action within a 1-minute window.
+
+      Incremental model with 5-minute lookback window to handle late-arriving data.
+
+      Partitioned by hour(candle_timestamp) for efficient time-based queries.
+
+    meta:
+      owner: "data-engineering"
+      refresh_frequency: "every 1 minute"
+
+    columns:
+      - name: candle_timestamp
+        description: "Start of the 1-minute candle period (truncated to minute)"
+        tests:
+          - not_null
+
+      - name: currency_pair
+        description: "Currency pair symbol (e.g., ECR/MRT)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ECR/MRT', 'ECR/LCR', 'ECR/AMC', 'MRT/LCR', 'MRT/AMC', 'LCR/AMC']
+
+      - name: base_currency
+        description: "Base currency code (first in pair)"
+        tests:
+          - not_null
+
+      - name: quote_currency
+        description: "Quote currency code (second in pair)"
+        tests:
+          - not_null
+
+      - name: open_price
+        description: "First trade price in the candle period"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0.0001
+              max_value: 1000000
+
+      - name: high_price
+        description: "Highest trade price in the candle period"
+        tests:
+          - not_null
+
+      - name: low_price
+        description: "Lowest trade price in the candle period"
+        tests:
+          - not_null
+
+      - name: close_price
+        description: "Last trade price in the candle period"
+        tests:
+          - not_null
+
+      - name: total_volume
+        description: "Sum of all trade volumes in the candle period"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+      - name: trade_count
+        description: "Number of trades in the candle period"
+        tests:
+          - not_null
+
+      - name: avg_spread_bps
+        description: "Average bid-ask spread in basis points"
+
+      - name: price_change
+        description: "Absolute price change (close - open)"
+
+      - name: price_change_pct
+        description: "Percentage price change ((close - open) / open * 100)"
+
+      - name: volatility_pct
+        description: "Intra-period volatility ((high - low) / open * 100)"
+
+      - name: candle_interval
+        description: "Candle time interval identifier"
+        tests:
+          - accepted_values:
+              values: ['1min']
+
+      - name: calculated_at
+        description: "Timestamp when this candle was calculated"
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - currency_pair
+            - candle_timestamp
+
+      # OHLC validity: low <= open, high, close
+      - dbt_expectations.expect_column_values_to_be_between:
+          column_name: low_price
+          max_value_column: open_price
+          row_condition: "open_price is not null"
+          config:
+            severity: error
+
+      - dbt_expectations.expect_column_values_to_be_between:
+          column_name: low_price
+          max_value_column: high_price
+          row_condition: "high_price is not null"
+          config:
+            severity: error
+
+      - dbt_expectations.expect_column_values_to_be_between:
+          column_name: low_price
+          max_value_column: close_price
+          row_condition: "close_price is not null"
+          config:
+            severity: error
+
+      # high >= open, low, close
+      - dbt_expectations.expect_column_values_to_be_between:
+          column_name: high_price
+          min_value_column: open_price
+          row_condition: "open_price is not null"
+          config:
+            severity: error
+
+  - name: ohlc_candles_5min
+    description: |
+      5-minute OHLC candles aggregated from raw FX tick data.
+      Each candle represents price action within a 5-minute window.
+
+      Incremental model with 15-minute lookback window to handle late-arriving data.
+
+      Partitioned by day(candle_timestamp) for efficient date-based queries.
+
+    meta:
+      owner: "data-engineering"
+      refresh_frequency: "every 5 minutes"
+
+    columns:
+      - name: candle_timestamp
+        description: "Start of the 5-minute candle period"
+        tests:
+          - not_null
+
+      - name: currency_pair
+        description: "Currency pair symbol"
+        tests:
+          - not_null
+
+      - name: open_price
+        tests:
+          - not_null
+
+      - name: high_price
+        tests:
+          - not_null
+
+      - name: low_price
+        tests:
+          - not_null
+
+      - name: close_price
+        tests:
+          - not_null
+
+      - name: total_volume
+        tests:
+          - not_null
+
+      - name: candle_interval
+        tests:
+          - accepted_values:
+              values: ['5min']
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - currency_pair
+            - candle_timestamp
+
+  - name: ohlc_candles_1h
+    description: |
+      1-hour OHLC candles aggregated from raw FX tick data.
+      Each candle represents price action within a 1-hour window.
+
+      Incremental model with 2-hour lookback window to handle late-arriving data.
+
+      Partitioned by month(candle_timestamp) for efficient monthly queries.
+
+    meta:
+      owner: "data-engineering"
+      refresh_frequency: "every 1 hour"
+
+    columns:
+      - name: candle_timestamp
+        description: "Start of the 1-hour candle period"
+        tests:
+          - not_null
+
+      - name: currency_pair
+        tests:
+          - not_null
+
+      - name: open_price
+        tests:
+          - not_null
+
+      - name: high_price
+        tests:
+          - not_null
+
+      - name: low_price
+        tests:
+          - not_null
+
+      - name: close_price
+        tests:
+          - not_null
+
+      - name: total_volume
+        tests:
+          - not_null
+
+      - name: num_trader_types
+        description: "Number of distinct trader types in the period"
+
+      - name: candle_interval
+        tests:
+          - accepted_values:
+              values: ['1h']
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - currency_pair
+            - candle_timestamp
+
+  - name: ohlc_candles_1d
+    description: |
+      Daily OHLC candles aggregated from raw FX tick data.
+      Each candle represents price action for an entire trading day.
+
+      Incremental model with 1-day lookback window to handle late-arriving data.
+
+      Partitioned by year(candle_timestamp) for efficient yearly queries.
+
+      Includes additional metrics: bid/ask prices at open/close, spread change %.
+
+    meta:
+      owner: "data-engineering"
+      refresh_frequency: "daily"
+
+    columns:
+      - name: candle_timestamp
+        description: "Start of the daily candle period (midnight)"
+        tests:
+          - not_null
+
+      - name: currency_pair
+        tests:
+          - not_null
+
+      - name: open_price
+        tests:
+          - not_null
+
+      - name: high_price
+        tests:
+          - not_null
+
+      - name: low_price
+        tests:
+          - not_null
+
+      - name: close_price
+        tests:
+          - not_null
+
+      - name: open_bid_price
+        description: "Bid price at market open"
+
+      - name: open_ask_price
+        description: "Ask price at market open"
+
+      - name: close_bid_price
+        description: "Bid price at market close"
+
+      - name: close_ask_price
+        description: "Ask price at market close"
+
+      - name: total_volume
+        tests:
+          - not_null
+
+      - name: spread_change_pct
+        description: "Percentage change in spread from open to close"
+
+      - name: candle_interval
+        tests:
+          - accepted_values:
+              values: ['1d']
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - currency_pair
+            - candle_timestamp

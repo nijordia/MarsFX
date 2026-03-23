@@ -1,0 +1,137 @@
+# Trino configuration for MarsFX
+# Connects to Lakekeeper Iceberg REST catalog
+
+image:
+  repository: trinodb/trino
+  tag: "445"
+  pullPolicy: IfNotPresent
+
+server:
+  workers: 2
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Ingress configuration (recommended way to access Trino)
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  hosts:
+    - host: trino.local.platform
+      paths:
+        - path: /
+          pathType: Prefix
+
+# Additional catalogs configuration
+additionalCatalogs:
+  iceberg: |
+    connector.name=iceberg
+    iceberg.catalog.type=rest
+    iceberg.rest-catalog.uri=http://lakekeeper-chart.data-lakekeeper.svc.cluster.local:8181/catalog
+    iceberg.rest-catalog.warehouse=marsfx
+    fs.native-s3.enabled=true
+    s3.endpoint=http://minio.data-storage.svc.cluster.local:9000
+    s3.path-style-access=true
+    s3.region=us-east-1
+    s3.aws-access-key=admin
+    s3.aws-secret-key=minioadmin
+
+  memory: |
+    connector.name=memory
+
+# Additional config properties - MUST BE ARRAY FORMAT
+additionalConfigProperties:
+  - http-server.process-forwarded=true
+  - query.max-history=100
+  - query.min-expire-age=30m
+  - retry-policy=NONE
+
+
+# Additional node properties - MUST BE ARRAY FORMAT  
+additionalNodeProperties:
+  - node.environment=marsfx_dev
+  - node.data-dir=/data/trino
+
+# Additional log properties - MUST BE ARRAY FORMAT
+additionalLogProperties:
+  - io.trino.plugin.iceberg=DEBUG
+  - io.trino.plugin.base.security=DEBUG
+
+# Additional JVM config
+additionalJVMConfig:
+  - "-XX:+UseContainerSupport"
+  - "-XX:+ExitOnOutOfMemoryError"
+  - "-XX:+HeapDumpOnOutOfMemoryError"
+  - "-XX:ReservedCodeCacheSize=512M"
+
+# TOP-LEVEL coordinator section
+coordinator:
+  jvm:
+    maxHeapSize: "4G"
+    gcMethod:
+      type: "UseG1GC"
+      g1:
+        heapRegionSize: "32M"
+  config:
+    query:
+      maxMemory: "3GB"
+      maxMemoryPerNode: "1GB"
+    memory:
+      heapHeadroomPerNode: "1GB"
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "1000m"
+    limits:
+      memory: "8Gi"
+      cpu: "2000m"
+
+# TOP-LEVEL worker section
+worker:
+  jvm:
+    maxHeapSize: "4G"
+    gcMethod:
+      type: "UseG1GC"
+      g1:
+        heapRegionSize: "32M"
+  config:
+    query:
+      maxMemory: "3GB"
+      maxMemoryPerNode: "1GB"
+    memory:
+      heapHeadroomPerNode: "1GB"
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "1000m"
+    limits:
+      memory: "8Gi"
+      cpu: "2000m"
+
+# Security context
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Service account
+serviceAccount:
+  create: true
+  name: trino
+
+# Affinity rules
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: component
+                operator: In
+                values:
+                  - worker
+          topologyKey: kubernetes.io/hostname

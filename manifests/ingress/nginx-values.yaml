@@ -1,0 +1,72 @@
+# Ingress NGINX Controller configuration for MarsFX
+
+controller:
+  # Enable the ingress controller
+  enabled: true
+
+  # Replica count
+  replicaCount: 1
+
+  # Service configuration
+  service:
+    type: NodePort
+    nodePorts:
+      http: 30080
+      https: 30443
+
+  # Additional ports for custom services
+  tcp:
+    # PostgreSQL
+    5432: "data-storage/postgres:5432"
+    # MinIO API
+    9000: "data-storage/minio:9000"
+
+  # Resources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Metrics
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "10254"
+
+  # Additional configuration
+  config:
+    # Allow large request bodies (for data uploads)
+    proxy-body-size: "100m"
+    # Timeout settings
+    proxy-connect-timeout: "600"
+    proxy-send-timeout: "600"
+    proxy-read-timeout: "600"
+    # Logging
+    log-format-escape-json: "true"
+    log-format-upstream: '{"time": "$time_iso8601", "remote_addr": "$proxy_protocol_addr", "x_forwarded_for": "$proxy_add_x_forwarded_for", "request_id": "$req_id", "remote_user": "$remote_user", "bytes_sent": $bytes_sent, "request_time": $request_time, "status": $status, "vhost": "$host", "request_proto": "$server_protocol", "path": "$uri", "request_query": "$args", "request_length": $request_length, "duration": $request_time,"method": "$request_method", "http_referrer": "$http_referer", "http_user_agent": "$http_user_agent"}'
+
+# Default backend
+defaultBackend:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 50m
+      memory: 64Mi
+
+# RBAC
+rbac:
+  create: true
+
+# Service account
+serviceAccount:
+  create: true
+  name: ingress-nginx

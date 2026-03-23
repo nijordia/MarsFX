@@ -1,0 +1,135 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lakekeeper-bootstrap
+  namespace: data-lakekeeper
+  labels:
+    app: lakekeeper-bootstrap
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app: lakekeeper-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-lakekeeper
+          image: curlimages/curl:8.5.0
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Lakekeeper to be ready..."
+              until curl -f -s http://lakekeeper-chart.data-lakekeeper.svc.cluster.local:8181/health; do
+                echo "Lakekeeper not ready yet, waiting..."
+                sleep 5
+              done
+              echo "Lakekeeper is ready!"
+      containers:
+        - name: bootstrap
+          image: curlimages/curl:8.5.0
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              BASE_URL="http://lakekeeper-chart.data-lakekeeper.svc.cluster.local:8181"
+
+              echo "=== Lakekeeper Bootstrap Starting ==="
+
+              # Accept terms of use
+              echo "Accepting terms of use..."
+              curl -X POST "$BASE_URL/management/v1/bootstrap" \
+                -H "Content-Type: application/json" \
+                -d '{"accept-terms-of-use": true}' || echo "Bootstrap may already be done"
+              echo ""
+
+              # Check if warehouse already exists
+              echo "Checking if warehouse 'marsfx' already exists..."
+              WAREHOUSE_CHECK=$(curl -s -w "%{http_code}" -o /tmp/warehouse_check.json \
+                -X GET "$BASE_URL/catalog/v1/warehouses/marsfx" || echo "404")
+
+              if [ "$WAREHOUSE_CHECK" = "200" ]; then
+                echo "Warehouse 'marsfx' already exists, skipping creation"
+              else
+                echo "Creating warehouse 'marsfx'..."
+                curl -X POST "$BASE_URL/management/v1/warehouse" \
+                  -H "Content-Type: application/json" \
+                  -d '{
+                    "warehouse-name": "marsfx",
+                    "project-id": "00000000-0000-0000-0000-000000000000",
+                    "storage-profile": {
+                      "type": "s3",
+                      "bucket": "lakehouse",
+                      "key-prefix": "fx_data",
+                      "endpoint": "http://minio.data-storage.svc.cluster.local:9000",
+                      "region": "us-east-1",
+                      "path-style-access": true,
+                      "flavor": "s3-compat",
+                      "sts-enabled": true,
+                      "allow-alternative-protocols": true
+                    },
+                    "delete-profile": {
+                      "type": "hard"
+                    },
+                    "storage-credential": {
+                      "type": "s3",
+                      "credential-type": "access-key",
+                      "aws-access-key-id": "'"$AWS_ACCESS_KEY_ID"'",
+                      "aws-secret-access-key": "'"$AWS_SECRET_ACCESS_KEY"'"
+                    }
+                  }' || echo "Warehouse creation may have failed, continuing..."
+                echo ""
+              fi
+
+              # Check if namespace already exists
+              echo "Checking if namespace 'fx_data' already exists..."
+              NAMESPACE_CHECK=$(curl -s -w "%{http_code}" -o /tmp/namespace_check.json \
+                -X GET "$BASE_URL/catalog/v1/namespaces/fx_data" \
+                -H "X-Iceberg-Warehouse: marsfx" || echo "404")
+
+              if [ "$NAMESPACE_CHECK" = "200" ]; then
+                echo "Namespace 'fx_data' already exists, skipping creation"
+              else
+                echo "Creating namespace 'fx_data'..."
+                curl -X POST "$BASE_URL/catalog/v1/namespaces" \
+                  -H "Content-Type: application/json" \
+                  -H "X-Iceberg-Warehouse: marsfx" \
+                  -d '{
+                    "namespace": ["fx_data"],
+                    "properties": {
+                      "description": "MarsFX interplanetary currency exchange data",
+                      "owner": "marsfx-data-team"
+                    }
+                  }' || echo "Namespace creation may have failed, continuing..."
+                echo ""
+              fi
+
+              echo "=== Verifying bootstrap ==="
+              echo "Listing all namespaces:"
+              curl -s -X GET "$BASE_URL/catalog/v1/namespaces" \
+                -H "X-Iceberg-Warehouse: marsfx" | jq '.' || true
+
+              echo ""
+              echo "=== Lakekeeper Bootstrap Complete ==="
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: lakekeeper-secret
+                  key: s3-access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lakekeeper-secret
+                  key: s3-secret-access-key
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
