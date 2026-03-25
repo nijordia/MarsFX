@@ -1,4 +1,4 @@
-.PHONY: help create-cluster delete-cluster deploy-namespaces deploy-ingress deploy-storage deploy-secrets deploy-pgbouncer deploy-lakekeeper deploy-trino seed-data deploy clean status
+.PHONY: help create-cluster delete-cluster deploy-namespaces deploy-ingress deploy-storage deploy-secrets deploy-pgbouncer deploy-lakekeeper deploy-trino deploy-kafka deploy-arroyo seed-data deploy clean clean-kafka clean-arroyo status
 
 # Configuration
 CLUSTER_NAME := marsfx
@@ -138,6 +138,40 @@ deploy-trino: deploy-lakekeeper ## Deploy Trino query engine
 	@echo "✅ Trino ready"
 	@echo "📊 Trino UI: http://localhost:8080"
 
+deploy-kafka: deploy-namespaces ## Deploy Kafka broker
+	@echo "📨 Deploying Kafka broker"
+	@$(KUBECTL) apply -k manifests/kafka/
+	@echo "⏳ Waiting for Kafka broker to be ready..."
+	@$(KUBECTL) wait --namespace $(NS_DATA_KAFKA) \
+		--for=condition=ready pod \
+		--selector=app=kafka --timeout=300s
+	@sleep 10
+	@echo "📋 Creating Kafka topics..."
+	@$(KUBECTL) delete job/kafka-create-topics -n $(NS_DATA_KAFKA) 2>/dev/null || true
+	@$(KUBECTL) apply -f manifests/jobs/kafka-create-topics.yaml
+	@$(KUBECTL) wait --namespace $(NS_DATA_KAFKA) \
+		--for=condition=complete job/kafka-create-topics --timeout=120s || true
+	@echo "✅ Kafka ready at localhost:9092"
+	@echo "📊 Topics: marsfx.raw.ticks (6 partitions), marsfx.raw.events (3 partitions)"
+
+deploy-arroyo: deploy-kafka deploy-storage ## Deploy Arroyo stream processor
+	@echo "🌊 Deploying Arroyo stream processor"
+	@$(KUBECTL) apply -k manifests/arroyo/
+	@echo "⏳ Waiting for database initialization..."
+	@$(KUBECTL) wait --namespace $(NS_DATA_ARROYO) \
+		--for=condition=complete job/arroyo-init --timeout=120s || true
+	@sleep 5
+	@echo "⏳ Waiting for Arroyo controller to be ready..."
+	@$(KUBECTL) wait --namespace $(NS_DATA_ARROYO) \
+		--for=condition=ready pod \
+		--selector=app=arroyo,component=controller --timeout=300s
+	@echo "⏳ Waiting for Arroyo runner to be ready..."
+	@$(KUBECTL) wait --namespace $(NS_DATA_ARROYO) \
+		--for=condition=ready pod \
+		--selector=app=arroyo,component=runner --timeout=300s
+	@echo "✅ Arroyo ready at http://localhost:8000"
+	@echo "📊 Access Arroyo UI to create streaming pipelines"
+
 build-images: ## Build custom Docker images for data loading
 	@echo "🏗️  Building custom Docker images"
 	@docker build -t marsfx-data-loader:latest -f manifests/docker/Dockerfile.data-loader .
@@ -158,22 +192,28 @@ seed-data: deploy-trino build-images ## Seed initial FX reference data
 		--timeout=300s || true
 	@echo "✅ Reference data seeded"
 
-deploy: create-cluster deploy-ingress deploy-secrets deploy-storage deploy-pgbouncer deploy-lakekeeper deploy-trino ## Deploy entire stack
+deploy: create-cluster deploy-ingress deploy-secrets deploy-storage deploy-pgbouncer deploy-lakekeeper deploy-trino deploy-kafka deploy-arroyo ## Deploy entire stack
 	@echo ""
 	@echo "✨ MarsFX platform deployed successfully!"
 	@echo ""
 	@echo "🌐 Access Points:"
 	@echo "  • Trino UI:      http://localhost:8080"
+	@echo "  • Arroyo UI:     http://localhost:8000"
 	@echo "  • MinIO Console: http://localhost:9001 (admin/minioadmin)"
 	@echo "  • Lakekeeper:    http://localhost:8181"
+	@echo "  • Kafka:         localhost:9092"
 	@echo ""
 	@echo "📦 Next steps:"
 	@echo "  • Run 'make seed-data' to load reference data"
 	@echo "  • Run 'make status' to check component health"
+	@echo "  • Test streaming: cd python && python main.py run --duration 60"
+	@echo "  • Create Arroyo pipelines at http://localhost:8000"
 	@echo "  • Configure dbt with 'cd dbt && dbt deps && dbt debug'"
 
 clean: ## Clean all deployments (keep cluster)
 	@echo "🧹 Cleaning all deployments"
+	@$(KUBECTL) delete -k manifests/arroyo/ || true
+	@$(KUBECTL) delete -k manifests/kafka/ || true
 	@helm uninstall trino -n $(NS_DATA_TRINO) || true
 	@helm uninstall lakekeeper-chart -n $(NS_DATA_LAKEKEEPER) || true
 	@helm uninstall pgbouncer -n $(NS_DATA_PGBOUNCER) || true
@@ -182,6 +222,17 @@ clean: ## Clean all deployments (keep cluster)
 	@$(KUBECTL) delete -k manifests/secrets/ || true
 	@$(KUBECTL) delete -f manifests/namespaces/ || true
 	@echo "✅ Cleanup complete"
+
+clean-kafka: ## Remove Kafka deployment
+	@echo "🧹 Removing Kafka..."
+	@$(KUBECTL) delete -k manifests/kafka/ || true
+	@$(KUBECTL) delete job/kafka-create-topics -n $(NS_DATA_KAFKA) || true
+	@echo "✅ Kafka removed"
+
+clean-arroyo: ## Remove Arroyo deployment
+	@echo "🧹 Removing Arroyo..."
+	@$(KUBECTL) delete -k manifests/arroyo/ || true
+	@echo "✅ Arroyo removed"
 
 status: ## Check status of all components
 	@echo "📊 MarsFX Platform Status"
@@ -203,6 +254,12 @@ status: ## Check status of all components
 	@echo ""
 	@echo "🔱 Trino:"
 	@$(KUBECTL) get pods -n $(NS_DATA_TRINO) -o wide 2>/dev/null || echo "  ❌ Trino namespace not found"
+	@echo ""
+	@echo "📨 Kafka:"
+	@$(KUBECTL) get pods -n $(NS_DATA_KAFKA) -o wide 2>/dev/null || echo "  ❌ Kafka namespace not found"
+	@echo ""
+	@echo "🌊 Arroyo:"
+	@$(KUBECTL) get pods -n $(NS_DATA_ARROYO) -o wide 2>/dev/null || echo "  ❌ Arroyo namespace not found"
 
 logs-lakekeeper: ## Show Lakekeeper logs
 	@$(KUBECTL) logs -n $(NS_DATA_LAKEKEEPER) -l app.kubernetes.io/name=lakekeeper --tail=100 -f
@@ -212,6 +269,15 @@ logs-trino: ## Show Trino coordinator logs
 
 logs-pgbouncer: ## Show PgBouncer logs
 	@$(KUBECTL) logs -n $(NS_DATA_PGBOUNCER) -l app=pgbouncer --tail=100 -f
+
+logs-kafka: ## Show Kafka broker logs
+	@$(KUBECTL) logs -n $(NS_DATA_KAFKA) -l app=kafka,component=broker --tail=100 -f
+
+logs-arroyo-controller: ## Show Arroyo controller logs
+	@$(KUBECTL) logs -n $(NS_DATA_ARROYO) -l app=arroyo,component=controller --tail=100 -f
+
+logs-arroyo-runner: ## Show Arroyo runner logs
+	@$(KUBECTL) logs -n $(NS_DATA_ARROYO) -l app=arroyo,component=runner --tail=100 -f
 
 port-forward-trino: ## Port-forward Trino UI
 	@echo "🔱 Port-forwarding Trino UI to localhost:8080"
@@ -224,6 +290,10 @@ port-forward-minio: ## Port-forward MinIO console
 port-forward-lakekeeper: ## Port-forward Lakekeeper REST API
 	@echo "🏔️  Port-forwarding Lakekeeper to localhost:8181"
 	@$(KUBECTL) port-forward -n $(NS_DATA_LAKEKEEPER) svc/lakekeeper-chart 8181:8181
+
+port-forward-arroyo: ## Port-forward Arroyo UI
+	@echo "🌊 Port-forwarding Arroyo UI to localhost:8000"
+	@$(KUBECTL) port-forward -n $(NS_DATA_ARROYO) svc/arroyo-ui 8000:8000
 
 bootstrap-lakekeeper: ## Bootstrap Lakekeeper warehouse (run once after deploy)
 	@echo "🌱 Bootstrapping Lakekeeper..."

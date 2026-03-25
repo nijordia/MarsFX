@@ -1,0 +1,49 @@
+---
+# ClusterIP service for internal access
+# Other pods in the cluster use this to connect
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-broker
+  namespace: data-kafka
+  labels:
+    app: kafka
+    component: broker
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9092
+      targetPort: 9092
+      protocol: TCP
+      name: kafka
+    - port: 9093
+      targetPort: 9093
+      protocol: TCP
+      name: controller
+  selector:
+    app: kafka
+    component: broker
+
+---
+# NodePort service for external access (localhost:9092)
+# This is how Python generator connects from outside the cluster
+# Flow: localhost:9092 -> kind-node:30092 -> pod:9094 (PLAINTEXT_HOST)
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-external
+  namespace: data-kafka
+  labels:
+    app: kafka
+    component: broker
+spec:
+  type: NodePort
+  ports:
+    - port: 9092
+      targetPort: 9094
+      nodePort: 30092
+      protocol: TCP
+      name: kafka-external
+  selector:
+    app: kafka
+    component: broker

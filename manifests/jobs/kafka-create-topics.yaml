@@ -1,0 +1,94 @@
+---
+# Job to create Kafka topics for MarsFX streaming pipeline
+# Creates two topics:
+#   - marsfx.raw.ticks: High-volume tick data (6 partitions)
+#   - marsfx.raw.events: Lower-volume economic events (3 partitions)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-create-topics
+  namespace: data-kafka
+  labels:
+    app: kafka
+    component: setup
+spec:
+  # Don't keep completed pods around
+  ttlSecondsAfterFinished: 300
+
+  # Retry up to 3 times if it fails
+  backoffLimit: 3
+
+  template:
+    metadata:
+      labels:
+        app: kafka
+        component: setup
+    spec:
+      restartPolicy: OnFailure
+
+      containers:
+        - name: create-topics
+          image: confluentinc/cp-kafka:7.6.0
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Waiting for Kafka broker to be ready..."
+
+              # Wait for Kafka to be ready (max 2 minutes)
+              timeout=120
+              while [ $timeout -gt 0 ]; do
+                if kafka-broker-api-versions --bootstrap-server kafka-broker:9092 > /dev/null 2>&1; then
+                  echo "Kafka broker is ready!"
+                  break
+                fi
+                echo "Waiting for broker... ($timeout seconds remaining)"
+                sleep 5
+                timeout=$((timeout - 5))
+              done
+
+              if [ $timeout -eq 0 ]; then
+                echo "ERROR: Kafka broker did not become ready in time"
+                exit 1
+              fi
+
+              echo "Creating topics..."
+
+              # Create marsfx.raw.ticks topic
+              # 6 partitions for high-volume tick data
+              # Compression enabled (lz4)
+              # 7-day retention
+              kafka-topics --create \
+                --bootstrap-server kafka-broker:9092 \
+                --topic marsfx.raw.ticks \
+                --partitions 6 \
+                --replication-factor 1 \
+                --config compression.type=lz4 \
+                --config retention.ms=604800000 \
+                --config segment.ms=3600000 \
+                --if-not-exists || echo "Topic marsfx.raw.ticks already exists"
+
+              # Create marsfx.raw.events topic
+              # 3 partitions for lower-volume events
+              # Compression enabled (lz4)
+              # 7-day retention
+              kafka-topics --create \
+                --bootstrap-server kafka-broker:9092 \
+                --topic marsfx.raw.events \
+                --partitions 3 \
+                --replication-factor 1 \
+                --config compression.type=lz4 \
+                --config retention.ms=604800000 \
+                --config segment.ms=3600000 \
+                --if-not-exists || echo "Topic marsfx.raw.events already exists"
+
+              echo "Listing all topics:"
+              kafka-topics --list --bootstrap-server kafka-broker:9092
+
+              echo "Topic details:"
+              kafka-topics --describe \
+                --bootstrap-server kafka-broker:9092 \
+                --topic marsfx.raw.ticks,marsfx.raw.events
+
+              echo "✅ Kafka topics created successfully!"

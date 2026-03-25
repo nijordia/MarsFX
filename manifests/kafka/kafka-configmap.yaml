@@ -1,0 +1,63 @@
+---
+# Kafka configuration for KRaft mode (no ZooKeeper)
+# This ConfigMap contains the server.properties file
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+  namespace: data-kafka
+  labels:
+    app: kafka
+    component: broker
+data:
+  server.properties: |
+    # KRaft mode configuration
+    # KRaft is Kafka's new consensus protocol (replaces ZooKeeper)
+    process.roles=broker,controller
+    node.id=1
+    controller.quorum.voters=1@localhost:9093
+
+    # Listeners
+    # PLAINTEXT: Internal cluster communication
+    # PLAINTEXT_HOST: External access from localhost (kind maps host:9092 -> NodePort:30092)
+    # CONTROLLER: KRaft controller protocol
+    listeners=PLAINTEXT://:9092,PLAINTEXT_HOST://:9094,CONTROLLER://:9093
+    advertised.listeners=PLAINTEXT://kafka-broker.data-kafka.svc.cluster.local:9092,PLAINTEXT_HOST://localhost:9092
+    listener.security.protocol.map=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+    controller.listener.names=CONTROLLER
+    inter.broker.listener.name=PLAINTEXT
+
+    # Cluster configuration
+    cluster.id=zw8IE9F_Qre9aXS0bFfE8g
+
+    # Log directories (EmptyDir mount)
+    log.dirs=/var/lib/kafka/data
+
+    # Topic defaults (optimized for learning, not production)
+    num.partitions=3
+    default.replication.factor=1
+    min.insync.replicas=1
+
+    # Retention (keep 7 days for learning)
+    log.retention.hours=168
+    log.retention.bytes=-1
+    log.segment.bytes=1073741824
+
+    # Performance tuning (laptop-friendly)
+    # Small heap means faster startup, less memory usage
+    num.network.threads=3
+    num.io.threads=8
+    socket.send.buffer.bytes=102400
+    socket.receive.buffer.bytes=102400
+    socket.request.max.bytes=104857600
+
+    # Compression (save disk space)
+    compression.type=lz4
+
+    # Auto-create topics (disabled - we create explicitly)
+    auto.create.topics.enable=false
+
+    # Offsets topic (internal)
+    offsets.topic.replication.factor=1
+    transaction.state.log.replication.factor=1
+    transaction.state.log.min.isr=1

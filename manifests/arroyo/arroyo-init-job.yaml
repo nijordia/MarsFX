@@ -1,0 +1,74 @@
+---
+# Job to initialize Arroyo database
+# Creates the 'arroyo' database in PostgreSQL
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: arroyo-init
+  namespace: data-arroyo
+  labels:
+    app: arroyo
+    component: init
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 5
+
+  template:
+    metadata:
+      labels:
+        app: arroyo
+        component: init
+    spec:
+      restartPolicy: OnFailure
+
+      containers:
+        - name: init-db
+          image: postgres:16-alpine
+          env:
+            - name: PGHOST
+              value: "postgres.data-storage.svc.cluster.local"
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: "postgres"
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: arroyo-secrets
+                  key: POSTGRES_PASSWORD
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Waiting for PostgreSQL to be ready..."
+
+              # Wait for PostgreSQL (max 2 minutes)
+              timeout=120
+              while [ $timeout -gt 0 ]; do
+                if pg_isready -h $PGHOST -p $PGPORT -U $PGUSER; then
+                  echo "PostgreSQL is ready!"
+                  break
+                fi
+                echo "Waiting for PostgreSQL... ($timeout seconds remaining)"
+                sleep 5
+                timeout=$((timeout - 5))
+              done
+
+              if [ $timeout -eq 0 ]; then
+                echo "ERROR: PostgreSQL did not become ready in time"
+                exit 1
+              fi
+
+              echo "Creating Arroyo database..."
+
+              # Check if database exists
+              if psql -lqt | cut -d \| -f 1 | grep -qw arroyo; then
+                echo "Database 'arroyo' already exists"
+              else
+                createdb arroyo
+                echo "✅ Database 'arroyo' created successfully"
+              fi
+
+              echo "Listing databases:"
+              psql -c "\l"

@@ -1,0 +1,119 @@
+---
+# Kafka broker deployment (single broker for learning)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-broker
+  namespace: data-kafka
+  labels:
+    app: kafka
+    component: broker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+      component: broker
+  template:
+    metadata:
+      labels:
+        app: kafka
+        component: broker
+    spec:
+      # Init container to format KRaft storage
+      # Required on first startup to initialize the log directory
+      initContainers:
+        - name: kafka-init
+          image: confluentinc/cp-kafka:7.6.0
+          command:
+            - sh
+            - -c
+            - |
+              # Check if already formatted (look for meta.properties)
+              if [ ! -f /var/lib/kafka/data/meta.properties ]; then
+                echo "Formatting KRaft storage..."
+                kafka-storage format \
+                  --config /etc/kafka-config/server.properties \
+                  --cluster-id zw8IE9F_Qre9aXS0bFfE8g \
+                  --ignore-formatted
+              else
+                echo "Storage already formatted, skipping..."
+              fi
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+            - name: kafka-config
+              mountPath: /etc/kafka-config
+
+      containers:
+        - name: kafka
+          image: confluentinc/cp-kafka:7.6.0
+          ports:
+            - containerPort: 9092
+              name: kafka
+              protocol: TCP
+            - containerPort: 9093
+              name: controller
+              protocol: TCP
+            - containerPort: 9094
+              name: external
+              protocol: TCP
+
+          env:
+            # JVM heap size (laptop-friendly)
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xms512m -Xmx1024m"
+
+            # Point to our config file
+            - name: KAFKA_CFG_FILE
+              value: "/etc/kafka-config/server.properties"
+
+          # Use our custom config
+          command:
+            - sh
+            - -c
+            - |
+              kafka-server-start /etc/kafka-config/server.properties
+
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+            - name: kafka-config
+              mountPath: /etc/kafka-config
+
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+          # Liveness probe (check if Kafka is responding)
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # Readiness probe (check if Kafka is ready for traffic)
+          readinessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+      volumes:
+        # EmptyDir: Survives pod restarts, not cluster deletion
+        # Perfect for learning - fast startup, no PVC complexity
+        - name: kafka-data
+          emptyDir:
+            sizeLimit: 10Gi
+
+        - name: kafka-config
+          configMap:
+            name: kafka-config
