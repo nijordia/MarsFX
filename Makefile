@@ -51,7 +51,8 @@ deploy-ingress: deploy-namespaces ## Deploy ingress-nginx controller
 	@helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
 		--namespace $(NS_INGRESS) \
 		--create-namespace \
-		--values manifests/ingress/nginx-values.yaml
+		--values manifests/ingress/nginx-values.yaml \
+		--wait=false
 	@echo "⏳ Waiting for ingress controller to be ready..."
 	@$(KUBECTL) wait --namespace $(NS_INGRESS) \
 		--for=condition=ready pod \
@@ -144,7 +145,7 @@ deploy-kafka: deploy-namespaces ## Deploy Kafka broker
 	@echo "⏳ Waiting for Kafka broker to be ready..."
 	@$(KUBECTL) wait --namespace $(NS_DATA_KAFKA) \
 		--for=condition=ready pod \
-		--selector=app=kafka --timeout=300s
+		--selector=app=kafka,component=broker --timeout=300s
 	@sleep 10
 	@echo "📋 Creating Kafka topics..."
 	@$(KUBECTL) delete job/kafka-create-topics -n $(NS_DATA_KAFKA) 2>/dev/null || true
@@ -156,20 +157,26 @@ deploy-kafka: deploy-namespaces ## Deploy Kafka broker
 
 deploy-arroyo: deploy-kafka deploy-storage ## Deploy Arroyo stream processor
 	@echo "🌊 Deploying Arroyo stream processor"
-	@$(KUBECTL) apply -k manifests/arroyo/
-	@echo "⏳ Waiting for database initialization..."
+	@echo "⏳ Creating Arroyo database..."
+	@$(KUBECTL) apply -f manifests/arroyo/arroyo-init-job.yaml
+	@$(KUBECTL) apply -f manifests/arroyo/arroyo-secrets.yaml
 	@$(KUBECTL) wait --namespace $(NS_DATA_ARROYO) \
 		--for=condition=complete job/arroyo-init --timeout=120s || true
-	@sleep 5
-	@echo "⏳ Waiting for Arroyo controller to be ready..."
+	@echo "⏳ Installing Arroyo via Helm..."
+	@helm repo add arroyo https://arroyosystems.github.io/helm-repo || true
+	@helm repo update
+	@helm upgrade --install arroyo arroyo/arroyo \
+		--namespace $(NS_DATA_ARROYO) \
+		--create-namespace \
+		-f manifests/arroyo/values.yaml
+	@echo "⏳ Waiting for Arroyo pods to be ready..."
 	@$(KUBECTL) wait --namespace $(NS_DATA_ARROYO) \
 		--for=condition=ready pod \
-		--selector=app=arroyo,component=controller --timeout=300s
-	@echo "⏳ Waiting for Arroyo runner to be ready..."
-	@$(KUBECTL) wait --namespace $(NS_DATA_ARROYO) \
-		--for=condition=ready pod \
-		--selector=app=arroyo,component=runner --timeout=300s
-	@echo "✅ Arroyo ready at http://localhost:8000"
+		--selector=app.kubernetes.io/name=arroyo --timeout=300s
+	@echo "⏳ Exposing Arroyo UI via NodePort..."
+	@$(KUBECTL) patch svc arroyo -n $(NS_DATA_ARROYO) \
+		-p '{"spec": {"type": "NodePort", "ports": [{"name": "http", "port": 80, "targetPort": "http", "nodePort": 30115}]}}'
+	@echo "✅ Arroyo ready at http://localhost:5115"
 	@echo "📊 Access Arroyo UI to create streaming pipelines"
 
 build-images: ## Build custom Docker images for data loading
@@ -198,7 +205,7 @@ deploy: create-cluster deploy-ingress deploy-secrets deploy-storage deploy-pgbou
 	@echo ""
 	@echo "🌐 Access Points:"
 	@echo "  • Trino UI:      http://localhost:8080"
-	@echo "  • Arroyo UI:     http://localhost:8000"
+	@echo "  • Arroyo UI:     http://localhost:5115"
 	@echo "  • MinIO Console: http://localhost:9001 (admin/minioadmin)"
 	@echo "  • Lakekeeper:    http://localhost:8181"
 	@echo "  • Kafka:         localhost:9092"
@@ -207,12 +214,12 @@ deploy: create-cluster deploy-ingress deploy-secrets deploy-storage deploy-pgbou
 	@echo "  • Run 'make seed-data' to load reference data"
 	@echo "  • Run 'make status' to check component health"
 	@echo "  • Test streaming: cd python && python main.py run --duration 60"
-	@echo "  • Create Arroyo pipelines at http://localhost:8000"
+	@echo "  • Create Arroyo pipelines at http://localhost:5115"
 	@echo "  • Configure dbt with 'cd dbt && dbt deps && dbt debug'"
 
 clean: ## Clean all deployments (keep cluster)
 	@echo "🧹 Cleaning all deployments"
-	@$(KUBECTL) delete -k manifests/arroyo/ || true
+	@helm uninstall arroyo -n $(NS_DATA_ARROYO) || true
 	@$(KUBECTL) delete -k manifests/kafka/ || true
 	@helm uninstall trino -n $(NS_DATA_TRINO) || true
 	@helm uninstall lakekeeper-chart -n $(NS_DATA_LAKEKEEPER) || true
@@ -231,7 +238,9 @@ clean-kafka: ## Remove Kafka deployment
 
 clean-arroyo: ## Remove Arroyo deployment
 	@echo "🧹 Removing Arroyo..."
-	@$(KUBECTL) delete -k manifests/arroyo/ || true
+	@helm uninstall arroyo -n $(NS_DATA_ARROYO) || true
+	@$(KUBECTL) delete job/arroyo-init -n $(NS_DATA_ARROYO) || true
+	@$(KUBECTL) delete secret/arroyo-secrets -n $(NS_DATA_ARROYO) || true
 	@echo "✅ Arroyo removed"
 
 status: ## Check status of all components
@@ -274,10 +283,7 @@ logs-kafka: ## Show Kafka broker logs
 	@$(KUBECTL) logs -n $(NS_DATA_KAFKA) -l app=kafka,component=broker --tail=100 -f
 
 logs-arroyo-controller: ## Show Arroyo controller logs
-	@$(KUBECTL) logs -n $(NS_DATA_ARROYO) -l app=arroyo,component=controller --tail=100 -f
-
-logs-arroyo-runner: ## Show Arroyo runner logs
-	@$(KUBECTL) logs -n $(NS_DATA_ARROYO) -l app=arroyo,component=runner --tail=100 -f
+	@$(KUBECTL) logs -n $(NS_DATA_ARROYO) -l app.kubernetes.io/name=arroyo --tail=100 -f
 
 port-forward-trino: ## Port-forward Trino UI
 	@echo "🔱 Port-forwarding Trino UI to localhost:8080"
@@ -292,8 +298,8 @@ port-forward-lakekeeper: ## Port-forward Lakekeeper REST API
 	@$(KUBECTL) port-forward -n $(NS_DATA_LAKEKEEPER) svc/lakekeeper-chart 8181:8181
 
 port-forward-arroyo: ## Port-forward Arroyo UI
-	@echo "🌊 Port-forwarding Arroyo UI to localhost:8000"
-	@$(KUBECTL) port-forward -n $(NS_DATA_ARROYO) svc/arroyo-ui 8000:8000
+	@echo "🌊 Port-forwarding Arroyo UI to localhost:5115"
+	@$(KUBECTL) port-forward -n $(NS_DATA_ARROYO) svc/arroyo 5115:80
 
 bootstrap-lakekeeper: ## Bootstrap Lakekeeper warehouse (run once after deploy)
 	@echo "🌱 Bootstrapping Lakekeeper..."

@@ -7,6 +7,10 @@ controller:
   # Replica count
   replicaCount: 1
 
+  # Disable admission webhooks - they cause timeouts in kind
+  admissionWebhooks:
+    enabled: false
+
   # Service configuration
   service:
     type: NodePort

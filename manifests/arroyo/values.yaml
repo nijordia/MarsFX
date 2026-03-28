@@ -1,0 +1,62 @@
+# Arroyo Helm chart values for MarsFX
+# Docs: https://doc.arroyo.dev/deployment/kubernetes/
+
+# Use existing PostgreSQL (don't deploy a new one)
+postgresql:
+  deploy: false
+  externalDatabase:
+    host: postgres.data-storage.svc.cluster.local
+    port: 5432
+    name: arroyo
+    user: postgres
+    password: postgres
+
+# Local filesystem for checkpoints and artifacts (kind cluster)
+artifactUrl: "/tmp/arroyo-data"
+checkpointUrl: "/tmp/arroyo-data"
+
+volumes:
+  - name: checkpoints
+    hostPath:
+      path: /tmp/arroyo-data
+      type: DirectoryOrCreate
+
+volumeMounts:
+  - name: checkpoints
+    mountPath: /tmp/arroyo-data
+
+# Override the service to use NodePort so it's accessible from localhost
+controller:
+  service:
+    httpPort: 80
+
+# MinIO credentials for controller pod
+env:
+  - name: AWS_ACCESS_KEY_ID
+    value: "admin"
+  - name: AWS_SECRET_ACCESS_KEY
+    value: "minioadmin"
+  - name: AWS_ENDPOINT_URL
+    value: "http://minio.data-storage.svc.cluster.local:9000"
+  - name: AWS_REGION
+    value: "us-east-1"
+  - name: AWS_ALLOW_HTTP
+    value: "true"
+  - name: AWS_EC2_METADATA_DISABLED
+    value: "true"
+
+# MinIO credentials for worker pods (spawned by Kubernetes scheduler)
+worker:
+  env:
+    - name: AWS_ACCESS_KEY_ID
+      value: "admin"
+    - name: AWS_SECRET_ACCESS_KEY
+      value: "minioadmin"
+    - name: AWS_ENDPOINT_URL
+      value: "http://minio.data-storage.svc.cluster.local:9000"
+    - name: AWS_REGION
+      value: "us-east-1"
+    - name: AWS_ALLOW_HTTP
+      value: "true"
+    - name: AWS_EC2_METADATA_DISABLED
+      value: "true"

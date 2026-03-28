@@ -54,6 +54,10 @@ nodes:
       - containerPort: 30092
         hostPort: 9092
         protocol: TCP
+      # Arroyo UI (API serves Web UI on 5115, NodePort 30115)
+      - containerPort: 30115
+        hostPort: 5115
+        protocol: TCP
       # Dagster UI (will be added later)
       - containerPort: 30300
         hostPort: 3000
