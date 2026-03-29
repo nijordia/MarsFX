@@ -392,6 +392,8 @@ dbt docs serve  # Open http://localhost:8080
 - **Arroyo**: Deployed via Helm chart, runs controller + compiler + API in one pod, spawns worker pods per pipeline
 - **Arroyo workers**: Dynamically created by Kubernetes scheduler when a pipeline is launched
 - **Iceberg sink**: Arroyo writes Parquet files directly to MinIO via the Lakekeeper REST catalog
+- **Iceberg partitioning**: Uses `PARTITIONED BY (day(transaction_timestamp))` — partition info lives in Iceberg metadata, not S3 folder paths (unlike Hive). Verify via Trino `$partitions` metadata table
+- **Type casting**: Kafka source reads all fields as TEXT; the INSERT uses CAST to convert to TIMESTAMP/DOUBLE for the Iceberg sink
 - **Lakekeeper settings**: `sts-enabled: false` and `remote-signing-enabled: false` are required so Arroyo uses its own MinIO credentials instead of Lakekeeper-vended tokens
 
 **Deploy**:
@@ -434,17 +436,17 @@ CREATE TABLE kafka_ticks (
 
 CREATE TABLE iceberg_ticks (
   tick_id TEXT,
-  transaction_timestamp TEXT,
+  transaction_timestamp TIMESTAMP,
   currency_pair TEXT,
-  bid_price TEXT,
-  ask_price TEXT,
-  mid_price TEXT,
+  bid_price DOUBLE,
+  ask_price DOUBLE,
+  mid_price DOUBLE,
   spread_bps DOUBLE,
-  trade_price TEXT,
-  volume TEXT,
+  trade_price DOUBLE,
+  volume DOUBLE,
   exchange_location TEXT,
   trader_type TEXT,
-  event_time TEXT
+  event_time TIMESTAMP
 ) WITH (
   connector = 'iceberg',
   'catalog.type' = 'rest',
@@ -455,10 +457,23 @@ CREATE TABLE iceberg_ticks (
   type = 'sink',
   format = 'parquet',
   'rolling_policy.interval' = interval '30 seconds'
-);
+) PARTITIONED BY (day(transaction_timestamp));
 
 INSERT INTO iceberg_ticks
-SELECT * FROM kafka_ticks;
+SELECT
+  tick_id,
+  CAST(transaction_timestamp AS TIMESTAMP),
+  currency_pair,
+  CAST(bid_price AS DOUBLE),
+  CAST(ask_price AS DOUBLE),
+  CAST(mid_price AS DOUBLE),
+  spread_bps,
+  CAST(trade_price AS DOUBLE),
+  CAST(volume AS DOUBLE),
+  exchange_location,
+  trader_type,
+  CAST(event_time AS TIMESTAMP)
+FROM kafka_ticks;
 ```
 
 3. Click **Launch** (not Preview)
@@ -488,6 +503,14 @@ kubectl exec -it -n data-trino deployment/trino-coordinator -- trino \
 # Query sample data
 kubectl exec -it -n data-trino deployment/trino-coordinator -- trino \
   --execute "SELECT currency_pair, bid_price, ask_price, volume FROM iceberg.fx_data.raw_ticks_streaming LIMIT 5"
+
+# Verify partitioning (should show transaction_timestamp_day partitions)
+kubectl exec -it -n data-trino deployment/trino-coordinator -- trino \
+  --execute "SELECT * FROM iceberg.fx_data.\"raw_ticks_streaming\$partitions\""
+
+# Aggregation query (numeric types enable proper AVG, SUM, etc.)
+kubectl exec -it -n data-trino deployment/trino-coordinator -- trino \
+  --execute "SELECT currency_pair, count(*) as ticks, round(avg(bid_price), 4) as avg_bid, round(avg(spread_bps), 2) as avg_spread FROM iceberg.fx_data.raw_ticks_streaming GROUP BY currency_pair ORDER BY ticks DESC"
 ```
 
 **Troubleshooting Arroyo pipelines**:
