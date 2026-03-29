@@ -38,13 +38,17 @@ sudo nano /etc/hosts
 # 127.0.0.1 minio.marsfx.local
 # 127.0.0.1 lakekeeper.marsfx.local
 
-# 2. Create cluster and deploy everything
+# 2. Set up Trino credentials (one-time setup)
+cp manifests/trino/values.secret.yaml.example manifests/trino/values.secret.yaml
+# Edit values.secret.yaml with your MinIO credentials (default: admin/minioadmin)
+
+# 3. Create cluster and deploy everything
 make deploy
 
-# 3. Bootstrap Lakekeeper (creates warehouse and namespace)
+# 4. Bootstrap Lakekeeper (creates warehouse and namespace)
 make bootstrap-lakekeeper
 
-# 4. Check status - all pods should be Running
+# 5. Check status - all pods should be Running
 make status
 ```
 
@@ -86,6 +90,8 @@ SELECT * FROM iceberg.fx_data.test_table;
 - Trino UI: `make port-forward-trino` → http://localhost:8080
 - MinIO Console: `make port-forward-minio` → http://localhost:9001 (admin/minioadmin)
 - Lakekeeper API: `make port-forward-lakekeeper` → http://localhost:8181
+- Arroyo UI: `make port-forward-arroyo` → http://localhost:5115
+- Kafka: localhost:9092 (directly accessible)
 
 ---
 
@@ -97,8 +103,8 @@ Think of MarsFX as a **real-time FX trading data pipeline** with these steps:
 
 ```
 1. GENERATE → Python creates realistic tick data
-2. STREAM   → Kafka carries messages (optional)
-3. PROCESS  → Arroyo cleans and enriches (future)
+2. STREAM   → Kafka carries messages
+3. PROCESS  → Arroyo cleans and enriches
 4. STORE    → Iceberg tables hold the data
 5. TRANSFORM→ dbt creates OHLC candles
 6. QUERY    → Trino lets you analyze
@@ -110,7 +116,7 @@ Think of MarsFX as a **real-time FX trading data pipeline** with these steps:
 |-----------|--------------|-----------------|
 | **Python Generator** | Creates fake FX ticks and events | Simulates a real trading feed |
 | **Kafka** | Message bus for streaming | Decouples producers from consumers |
-| **Arroyo** | Real-time stream processor | Cleans data before storage (Phase 3) |
+| **Arroyo** | Real-time stream processor | Cleans data before storage |
 | **MinIO** | S3-compatible object storage | Stores Parquet files cheaply |
 | **PostgreSQL** | Relational database | Stores Iceberg table metadata |
 | **Lakekeeper** | Iceberg catalog server | Manages table schemas and versions |
@@ -141,9 +147,9 @@ data-storage     → PostgreSQL, MinIO
 data-pgbouncer   → PgBouncer connection pooler
 data-lakekeeper  → Lakekeeper catalog server
 data-trino       → Trino coordinator + workers
-data-kafka       → Kafka cluster (Phase 3)
-data-arroyo      → Arroyo stream processor (Phase 3)
-data-dagster     → Dagster orchestration (Phase 4)
+data-kafka       → Kafka cluster
+data-arroyo      → Arroyo stream processor
+data-dagster     → Dagster orchestration (Phase 5)
 ```
 
 ### Data Layers
@@ -157,9 +163,16 @@ data-dagster     → Dagster orchestration (Phase 4)
 └────────────────────────────────────────────────┘
                      ↓
 ┌────────────────────────────────────────────────┐
+│ STREAMING LAYER (Kafka + Arroyo)               │
+│ • Kafka: marsfx.raw.ticks (6 partitions)       │
+│ • Arroyo: Kafka source → Iceberg sink          │
+│ • Writes Parquet to MinIO every 30 seconds     │
+└────────────────────────────────────────────────┘
+                     ↓
+┌────────────────────────────────────────────────┐
 │ STORAGE LAYER (Iceberg)                        │
-│ • fx_data.raw_ticks                            │
-│ • Partitioned by hour(transaction_timestamp)   │
+│ • fx_data.raw_ticks_streaming                  │
+│ • Managed by Lakekeeper REST catalog           │
 │ • Format: Parquet on MinIO                     │
 └────────────────────────────────────────────────┘
                      ↓
@@ -194,8 +207,11 @@ MarsFX/
 │   ├── storage/                # PostgreSQL + MinIO
 │   ├── secrets/                # All credentials
 │   ├── pgbouncer/chart/        # PgBouncer Helm chart
-│   ├── lakekeeper/chart/       # Lakekeeper Helm chart
-│   └── trino/values.yaml       # Trino + Iceberg config
+│   ├── lakekeeper/             # Lakekeeper Helm chart + bootstrap
+│   ├── trino/values.yaml       # Trino + Iceberg config
+│   ├── kafka/                  # Kafka broker (KRaft mode)
+│   ├── arroyo/                 # Arroyo stream processor (Helm values)
+│   └── jobs/                   # One-time jobs (topics, DB init)
 │
 ├── python/                     # Data generator
 │   ├── fx_generator/           # Main generator package
@@ -357,19 +373,238 @@ dbt docs serve  # Open http://localhost:8080
 
 ---
 
-### Phase 4: Stream Processing (TODO)
+### Phase 4: Stream Processing with Kafka + Arroyo (DONE ✅)
 
-**What**: Real-time processing with Kafka + Arroyo
+**What**: Real-time streaming pipeline: Python → Kafka → Arroyo → Iceberg → Trino
 
-**Not implemented yet**. When ready:
-1. Deploy Kafka cluster
-2. Run Python generator with Kafka output
-3. Deploy Arroyo to process stream
-4. Write to Iceberg in real-time
+**Files to understand**:
+1. `manifests/kafka/kafka-configmap.yaml` - KRaft configuration (no ZooKeeper)
+2. `manifests/kafka/kafka-broker.yaml` - Single-broker deployment with EmptyDir storage
+3. `manifests/kafka/kafka-service.yaml` - ClusterIP + NodePort services
+4. `manifests/jobs/kafka-create-topics.yaml` - Topic creation job
+5. `manifests/arroyo/values.yaml` - Arroyo Helm chart config (PostgreSQL, MinIO credentials, worker env)
+6. `manifests/arroyo/arroyo-init-job.yaml` - Creates Arroyo database in PostgreSQL
+7. `manifests/lakekeeper/config/bootstrap.yaml` - Warehouse config (sts-enabled and remote-signing-enabled must be false for MinIO)
+8. `python/config/generator_config.yaml` - Kafka producer configuration
+
+**Key Concepts**:
+- **Kafka KRaft mode**: Consensus protocol replacing ZooKeeper
+- **Single broker**: Simplified for learning (not production-ready)
+- **EmptyDir volumes**: Ephemeral storage (survives pod restarts, not cluster deletion)
+- **Port mapping**: localhost:9092 → kind:30092 → kafka-external → pod:9094
+- **Topics**: marsfx.raw.ticks (6 partitions), marsfx.raw.events (3 partitions)
+- **Arroyo**: Deployed via Helm chart, runs controller + compiler + API in one pod, spawns worker pods per pipeline
+- **Arroyo workers**: Dynamically created by Kubernetes scheduler when a pipeline is launched
+- **Iceberg sink**: Arroyo writes Parquet files directly to MinIO via the Lakekeeper REST catalog
+- **Iceberg partitioning**: Uses `PARTITIONED BY (day(transaction_timestamp))` — partition info lives in Iceberg metadata, not S3 folder paths (unlike Hive). Verify via Trino `$partitions` metadata table
+- **Type casting**: Kafka source reads all fields as TEXT; the INSERT uses CAST to convert to TIMESTAMP/DOUBLE for the Iceberg sink
+- **Lakekeeper settings**: `sts-enabled: false` and `remote-signing-enabled: false` are required so Arroyo uses its own MinIO credentials instead of Lakekeeper-vended tokens
+
+**Deploy**:
+```bash
+# Deploy everything (including Kafka + Arroyo)
+make deploy
+
+# Or individually
+make deploy-kafka
+make deploy-arroyo
+```
+
+**Create the Arroyo streaming pipeline**:
+
+1. Open Arroyo UI: http://localhost:5115 (or `make port-forward-arroyo`)
+2. Create a new pipeline and paste this SQL:
+
+```sql
+CREATE TABLE kafka_ticks (
+  tick_id TEXT,
+  transaction_timestamp TEXT,
+  currency_pair TEXT,
+  bid_price TEXT,
+  ask_price TEXT,
+  mid_price TEXT,
+  spread_bps DOUBLE,
+  trade_price TEXT,
+  volume TEXT,
+  exchange_location TEXT,
+  trader_type TEXT,
+  event_time TEXT
+) WITH (
+  type = 'source',
+  connector = 'kafka',
+  bootstrap_servers = 'kafka-broker.data-kafka.svc.cluster.local:9092',
+  topic = 'marsfx.raw.ticks',
+  format = 'json',
+  'source.offset' = 'earliest'
+);
+
+CREATE TABLE iceberg_ticks (
+  tick_id TEXT,
+  transaction_timestamp TIMESTAMP,
+  currency_pair TEXT,
+  bid_price DOUBLE,
+  ask_price DOUBLE,
+  mid_price DOUBLE,
+  spread_bps DOUBLE,
+  trade_price DOUBLE,
+  volume DOUBLE,
+  exchange_location TEXT,
+  trader_type TEXT,
+  event_time TIMESTAMP
+) WITH (
+  connector = 'iceberg',
+  'catalog.type' = 'rest',
+  'catalog.rest.url' = 'http://lakekeeper-chart.data-lakekeeper.svc.cluster.local:8181/catalog',
+  'catalog.warehouse' = 'marsfx',
+  namespace = 'fx_data',
+  table_name = 'raw_ticks_streaming',
+  type = 'sink',
+  format = 'parquet',
+  'rolling_policy.interval' = interval '30 seconds'
+) PARTITIONED BY (day(transaction_timestamp));
+
+INSERT INTO iceberg_ticks
+SELECT
+  tick_id,
+  CAST(transaction_timestamp AS TIMESTAMP),
+  currency_pair,
+  CAST(bid_price AS DOUBLE),
+  CAST(ask_price AS DOUBLE),
+  CAST(mid_price AS DOUBLE),
+  spread_bps,
+  CAST(trade_price AS DOUBLE),
+  CAST(volume AS DOUBLE),
+  exchange_location,
+  trader_type,
+  CAST(event_time AS TIMESTAMP)
+FROM kafka_ticks;
+```
+
+3. Click **Launch** (not Preview)
+
+**Generate data and verify end-to-end**:
+```bash
+cd python
+source venv/bin/activate
+
+# Send data through the pipeline
+python main.py run --duration 60
+
+# Verify data in Kafka
+kubectl run kafka-test --rm -i --restart=Never \
+  --image=confluentinc/cp-kafka:7.6.0 \
+  --namespace=data-kafka \
+  -- kafka-console-consumer \
+  --bootstrap-server kafka-broker:9092 \
+  --topic marsfx.raw.ticks \
+  --from-beginning \
+  --max-messages 5
+
+# Verify data landed in Iceberg (via Trino)
+kubectl exec -it -n data-trino deployment/trino-coordinator -- trino \
+  --execute "SELECT count(*) FROM iceberg.fx_data.raw_ticks_streaming"
+
+# Query sample data
+kubectl exec -it -n data-trino deployment/trino-coordinator -- trino \
+  --execute "SELECT currency_pair, bid_price, ask_price, volume FROM iceberg.fx_data.raw_ticks_streaming LIMIT 5"
+
+# Verify partitioning (should show transaction_timestamp_day partitions)
+kubectl exec -it -n data-trino deployment/trino-coordinator -- trino \
+  --execute "SELECT * FROM iceberg.fx_data.\"raw_ticks_streaming\$partitions\""
+
+# Aggregation query (numeric types enable proper AVG, SUM, etc.)
+kubectl exec -it -n data-trino deployment/trino-coordinator -- trino \
+  --execute "SELECT currency_pair, count(*) as ticks, round(avg(bid_price), 4) as avg_bid, round(avg(spread_bps), 2) as avg_spread FROM iceberg.fx_data.raw_ticks_streaming GROUP BY currency_pair ORDER BY ticks DESC"
+```
+
+**Troubleshooting Arroyo pipelines**:
+```bash
+# Watch worker logs in real-time (run before launching pipeline)
+while true; do
+  POD=$(kubectl get pods -n data-arroyo --no-headers 2>/dev/null | grep "arroyo-worker" | head -1 | awk '{print $1}')
+  if [ -n "$POD" ]; then
+    echo "=== Found worker: $POD ==="
+    kubectl logs -n data-arroyo "$POD" -f 2>/dev/null
+  fi
+  sleep 1
+done
+
+# Check controller logs
+make logs-arroyo-controller
+
+# Common issues:
+# - "InvalidAccessKeyId": Check AWS_ACCESS_KEY_ID in arroyo values.yaml matches MinIO (admin, not minioadmin)
+# - "Connection refused": Race condition on controller restart, delete pipeline and recreate
+# - "channel closed": Usually a cascading panic from an upstream error, check worker logs for root cause
+```
 
 ---
 
-### Phase 5: Orchestration (TODO)
+### Phase 5: dbt Transformations (DONE ✅)
+
+**What**: Transform raw tick data into OHLC candles using dbt + Trino + Iceberg
+
+**Files to understand**:
+1. `dbt/dbt_project.yml` - Project config, model materialization settings, lookback windows
+2. `dbt/profiles.yml` - Trino connection profiles (dev, prod, local)
+3. `dbt/models/sources.yaml` - Source definitions (raw_ticks_streaming, economic_events)
+4. `dbt/models/staging/stg_fx_ticks.sql` - Staging model: type casting, currency pair splitting, data quality filters
+5. `dbt/models/marts/ohlc_candles_*.sql` - OHLC candle models (1min, 5min, 1h, 1d)
+6. `dbt/macros/ohlc_helpers.sql` - Reusable OHLC calculation macros
+7. `dbt/seeds/currency_pairs.csv` - Reference data for currency pairs
+8. `dbt/tests/verify_ohlc_logic.sql` - Custom OHLC validity test
+
+**Key Concepts**:
+- **Iceberg REST catalog**: Does not support views — all dbt models materialized as tables
+- **Incremental merge strategy**: OHLC models use `MERGE INTO` with lookback windows to handle late-arriving data
+- **Iceberg partitioning via dbt**: Uses `properties={"partitioning": "ARRAY['hour(candle_timestamp)']"}` in model config
+- **Trino syntax**: No PostgreSQL-style casts (`::integer`), use `CAST(x AS integer)` and Trino interval syntax (`interval '1' minute * N`)
+- **OHLC calculation**: Uses `row_number()` window functions for deterministic open/close price identification
+
+**Models created**:
+| Model | Rows | Granularity | Partitioned By |
+|-------|------|-------------|---------------|
+| `stg_fx_ticks` | 14,424 | tick-level | — |
+| `ohlc_candles_1min` | 366 | 1-minute | hour |
+| `ohlc_candles_5min` | 78 | 5-minute | day |
+| `ohlc_candles_1h` | 12 | hourly | month |
+| `ohlc_candles_1d` | 6 | daily | year |
+
+**Setup and run**:
+```bash
+# Port-forward Trino for local dbt access
+kubectl port-forward -n data-trino svc/trino 8080:8080 &
+
+# Install dbt-trino (in project venv)
+cd python && source venv/bin/activate
+pip install dbt-trino
+
+# Install dbt packages, seed, run, test
+cd ../dbt
+dbt deps --profiles-dir . --target local
+dbt seed --profiles-dir . --target local
+dbt run --profiles-dir . --target local
+dbt test --profiles-dir . --target local
+```
+
+**Verify in Trino**:
+```bash
+# Hourly OHLC candles
+kubectl exec -n data-trino deployment/trino-coordinator -- trino \
+  --output-format=ALIGNED \
+  --execute "SELECT candle_timestamp, currency_pair, open_price, high_price, low_price, close_price, trade_count FROM iceberg.fx_data_marts.ohlc_candles_1h ORDER BY candle_timestamp, currency_pair"
+
+# Daily candles
+kubectl exec -n data-trino deployment/trino-coordinator -- trino \
+  --output-format=ALIGNED \
+  --execute "SELECT * FROM iceberg.fx_data_marts.ohlc_candles_1d"
+
+# Staging row count
+kubectl exec -n data-trino deployment/trino-coordinator -- trino \
+  --execute "SELECT count(*) FROM iceberg.fx_data_staging.stg_fx_ticks"
+```
+
+### Phase 6: Orchestration (TODO)
 
 **What**: Schedule dbt runs with Dagster
 
@@ -401,16 +636,21 @@ make check-iceberg         # Check Iceberg tables in Lakekeeper
 make deploy-storage
 make deploy-lakekeeper
 make deploy-trino
+make deploy-kafka            # Deploy Kafka broker
+make deploy-arroyo           # Deploy Arroyo stream processor
 
 # Logs
 make logs-lakekeeper
 make logs-trino
 make logs-pgbouncer
+make logs-kafka              # View Kafka broker logs
+make logs-arroyo-controller  # View Arroyo controller logs
 
 # Port forwarding
 make port-forward-trino      # Access Trino UI at localhost:8080
 make port-forward-minio      # Access MinIO at localhost:9001
 make port-forward-lakekeeper # Access Lakekeeper API at localhost:8181
+make port-forward-arroyo     # Access Arroyo UI at localhost:8000
 ```
 
 ### Python Generator Commands
@@ -421,14 +661,17 @@ cd python
 # Show configuration
 python main.py info
 
-# Generate 5 minutes of data
+# Generate 5 minutes of data (to Kafka + Parquet)
+python main.py run --duration 300
+
+# Run without Kafka (Parquet only)
 python main.py run --no-kafka --duration 300
 
 # Run forever (Ctrl+C to stop)
-python main.py run --no-kafka
+python main.py run
 
 # Resume from checkpoint
-python main.py run --no-kafka --resume
+python main.py run --resume
 
 # Show checkpoint status
 python main.py checkpoint-info
@@ -623,7 +866,41 @@ pip install -r requirements.txt --force-reinstall
 cat config/generator_config.yaml
 
 # Run with debug logging
-python main.py run --no-kafka --duration 60 -v
+python main.py run --duration 60 -v
+```
+
+### "Kafka connection refused"
+
+```bash
+# Check Kafka is running
+kubectl get pods -n data-kafka
+
+# Verify port mapping
+nc -zv localhost 9092
+
+# Check Kafka logs for errors
+make logs-kafka
+
+# Verify topics exist
+kubectl run kafka-topics --rm -i --restart=Never \
+  --image=confluentinc/cp-kafka:7.6.0 \
+  --namespace=data-kafka \
+  -- kafka-topics --list --bootstrap-server kafka-broker:9092
+
+# If topics missing, recreate them
+kubectl delete job/kafka-create-topics -n data-kafka 2>/dev/null || true
+kubectl apply -f manifests/jobs/kafka-create-topics.yaml
+```
+
+### "Kafka topics missing after restart"
+
+EmptyDir volumes are ephemeral - topics are lost when pods restart. Recreate them:
+
+```bash
+kubectl delete job/kafka-create-topics -n data-kafka 2>/dev/null || true
+kubectl apply -f manifests/jobs/kafka-create-topics.yaml
+kubectl wait --namespace data-kafka \
+  --for=condition=complete job/kafka-create-topics --timeout=120s
 ```
 
 ### "Out of memory errors"
@@ -655,10 +932,18 @@ This platform is designed to run on your laptop and survive restarts/sleep cycle
 - **Iceberg tables** - Stored in MinIO
 - **kind cluster config** - Docker persists it
 
+### What DOES NOT Persist (Ephemeral) ⚠️
+
+- **Kafka topics and messages** - EmptyDir storage, lost on pod restart
+- **Arroyo state** - EmptyDir storage
+
+**After Kafka restart:** Recreate topics with `kubectl apply -f manifests/jobs/kafka-create-topics.yaml`
+
 ### What Needs Attention After Restart 🔄
 
 - **Pods** - May need restart with `make restart-pods`
 - **Port-forwards** - Need to re-run `make port-forward-*`
+- **Kafka topics** - Need to recreate if Kafka pod restarted
 - **One-time jobs** - Already completed, no need to rerun
 
 ### Typical Workflow
@@ -682,9 +967,9 @@ make connect-trino
 
 ### Resource Usage
 
-- **Memory**: ~4-6GB total
-- **CPU**: Light (mostly idle)
-- **Disk**: ~2GB for Docker images + data
+- **Memory**: ~8-10GB total (including Kafka + Arroyo)
+- **CPU**: Light (mostly idle, spikes during data generation)
+- **Disk**: ~4GB for Docker images + data
 
 You can safely run this alongside other work without slowing down your laptop.
 
@@ -797,11 +1082,10 @@ Based on your goals: **Building semantic layers with dbt**, **Understanding Apac
 
 ## What's Next?
 
-1. **Load Python data into Iceberg**: Currently manual, automate this
-2. **Deploy Kafka**: Enable real-time streaming
-3. **Add Arroyo**: Real-time stream processing
-4. **Build dashboards**: Connect Superset or Grafana
-5. **Add Dagster**: Orchestrate dbt runs and monitor quality
+1. **Add Dagster**: Orchestrate dbt runs and monitor data quality
+2. **Build dashboards**: Connect Superset or Grafana to Trino
+3. **More Arroyo pipelines**: Real-time OHLC aggregations, anomaly detection
+4. **Data contracts**: Schema enforcement between pipeline stages
 
 ---
 

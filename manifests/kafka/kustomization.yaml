@@ -1,0 +1,17 @@
+---
+# Kustomization for Kafka deployment
+# Apply with: kubectl apply -k manifests/kafka/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: data-kafka
+
+resources:
+  - kafka-configmap.yaml
+  - kafka-broker.yaml
+  - kafka-service.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: marsfx
+      app.kubernetes.io/component: kafka

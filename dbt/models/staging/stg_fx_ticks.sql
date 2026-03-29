@@ -1,7 +1,10 @@
 {{
   config(
-    materialized='view',
-    tags=['staging', 'fx_ticks']
+    materialized='table',
+    tags=['staging', 'fx_ticks'],
+    properties={
+      "format": "'PARQUET'"
+    }
   )
 }}
 
@@ -14,7 +17,7 @@
 */
 
 with source as (
-    select * from {{ source('fx_raw', 'raw_ticks') }}
+    select * from {{ source('fx_raw', 'raw_ticks_streaming') }}
 ),
 
 renamed_and_typed as (
@@ -23,9 +26,8 @@ renamed_and_typed as (
         cast(tick_id as varchar) as tick_id,
 
         -- Timestamps
-        cast(transaction_timestamp as timestamp(6) with time zone) as transaction_timestamp,
-        cast(event_time as timestamp(6) with time zone) as event_time,
-        cast(processing_time as timestamp(6) with time zone) as processing_time,
+        cast(transaction_timestamp as timestamp(6)) as transaction_timestamp,
+        cast(event_time as timestamp(6)) as event_time,
 
         -- Currency pair
         cast(currency_pair as varchar(20)) as currency_pair,

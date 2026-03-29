@@ -3,9 +3,10 @@
     materialized='incremental',
     incremental_strategy='merge',
     unique_key=['currency_pair', 'candle_timestamp'],
+    views_enabled=false,
     properties={
       "format": "'PARQUET'",
-      "partitioned_by": "ARRAY['year(candle_timestamp)']",
+      "partitioning": "ARRAY['year(candle_timestamp)']",
       "sorted_by": "ARRAY['currency_pair', 'candle_timestamp']"
     },
     tags=['marts', 'ohlc', 'daily']

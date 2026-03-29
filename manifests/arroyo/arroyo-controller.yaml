@@ -1,0 +1,113 @@
+---
+# Arroyo Controller Deployment
+# Manages streaming pipelines and provides web UI
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arroyo-controller
+  namespace: data-arroyo
+  labels:
+    app: arroyo
+    component: controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: arroyo
+      component: controller
+  template:
+    metadata:
+      labels:
+        app: arroyo
+        component: controller
+    spec:
+      containers:
+        - name: controller
+          image: ghcr.io/arroyosystems/arroyo:0.11.0
+          args:
+            - controller
+
+          ports:
+            - containerPort: 5116
+              name: http
+              protocol: TCP
+            - containerPort: 5114
+              name: admin
+              protocol: TCP
+
+          envFrom:
+            - configMapRef:
+                name: arroyo-config
+            - secretRef:
+                name: arroyo-secrets
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          livenessProbe:
+            tcpSocket:
+              port: 5116
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            tcpSocket:
+              port: 5116
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+---
+# Controller Service (ClusterIP for internal communication)
+apiVersion: v1
+kind: Service
+metadata:
+  name: arroyo-controller
+  namespace: data-arroyo
+  labels:
+    app: arroyo
+    component: controller
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5116
+      targetPort: 5116
+      protocol: TCP
+      name: http
+    - port: 5114
+      targetPort: 5114
+      protocol: TCP
+      name: admin
+  selector:
+    app: arroyo
+    component: controller
+
+---
+# Controller UI Service (NodePort for external access)
+apiVersion: v1
+kind: Service
+metadata:
+  name: arroyo-ui
+  namespace: data-arroyo
+  labels:
+    app: arroyo
+    component: controller
+spec:
+  type: NodePort
+  ports:
+    - port: 5116
+      targetPort: 5116
+      nodePort: 30800
+      protocol: TCP
+      name: http
+  selector:
+    app: arroyo
+    component: controller

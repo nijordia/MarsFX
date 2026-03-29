@@ -3,9 +3,10 @@
     materialized='incremental',
     incremental_strategy='merge',
     unique_key=['currency_pair', 'candle_timestamp'],
+    views_enabled=false,
     properties={
       "format": "'PARQUET'",
-      "partitioned_by": "ARRAY['day(candle_timestamp)']",
+      "partitioning": "ARRAY['day(candle_timestamp)']",
       "sorted_by": "ARRAY['currency_pair', 'candle_timestamp']"
     },
     tags=['marts', 'ohlc', '5min']
@@ -35,7 +36,7 @@ with source_ticks as (
 ticks_with_order as (
     select
         date_trunc('minute', transaction_timestamp) -
-            (extract(minute from transaction_timestamp)::integer % 5 || ' minutes')::interval as candle_timestamp,
+            (interval '1' minute * (minute(transaction_timestamp) % 5)) as candle_timestamp,
         currency_pair,
         base_currency,
         quote_currency,
@@ -48,14 +49,14 @@ ticks_with_order as (
             partition by
                 currency_pair,
                 date_trunc('minute', transaction_timestamp) -
-                (extract(minute from transaction_timestamp)::integer % 5 || ' minutes')::interval
+                (interval '1' minute * (minute(transaction_timestamp) % 5))
             order by transaction_timestamp asc
         ) as rn_first,
         row_number() over (
             partition by
                 currency_pair,
                 date_trunc('minute', transaction_timestamp) -
-                (extract(minute from transaction_timestamp)::integer % 5 || ' minutes')::interval
+                (interval '1' minute * (minute(transaction_timestamp) % 5))
             order by transaction_timestamp desc
         ) as rn_last
     from source_ticks

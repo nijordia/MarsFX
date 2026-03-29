@@ -141,7 +141,7 @@
 
   {% elif interval_type == '5min' %}
     date_trunc('minute', {{ timestamp_column }}) -
-    (extract(minute from {{ timestamp_column }})::integer % 5 || ' minutes')::interval
+    (interval '1' minute * (minute({{ timestamp_column }}) % 5))
 
   {% elif interval_type == 'hour' %}
     date_trunc('hour', {{ timestamp_column }})
@@ -198,7 +198,7 @@
       unique_key=['currency_pair', 'candle_timestamp'],
       properties={
         "format": "'PARQUET'",
-        "partitioned_by": get_partition_by(candle_interval),
+        "partitioning": get_partition_by(candle_interval),
         "sorted_by": "ARRAY['currency_pair', 'candle_timestamp']"
       },
       tags=['marts', 'ohlc', candle_interval]

@@ -1,0 +1,80 @@
+---
+# Arroyo Runner Deployment
+# Executes streaming SQL jobs and processes data
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arroyo-runner
+  namespace: data-arroyo
+  labels:
+    app: arroyo
+    component: runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: arroyo
+      component: runner
+  template:
+    metadata:
+      labels:
+        app: arroyo
+        component: runner
+    spec:
+      containers:
+        - name: runner
+          image: ghcr.io/arroyosystems/arroyo:0.11.0
+          args:
+            - worker
+
+          envFrom:
+            - configMapRef:
+                name: arroyo-config
+            - secretRef:
+                name: arroyo-secrets
+
+          env:
+            - name: WORKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+          volumeMounts:
+            - name: runner-data
+              mountPath: /tmp/arroyo
+
+          livenessProbe:
+            exec:
+              command:
+                - pgrep
+                - -f
+                - arroyo
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            exec:
+              command:
+                - pgrep
+                - -f
+                - arroyo
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+      volumes:
+        # EmptyDir for temporary worker state
+        - name: runner-data
+          emptyDir:
+            sizeLimit: 5Gi

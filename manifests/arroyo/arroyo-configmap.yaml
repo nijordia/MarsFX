@@ -1,0 +1,37 @@
+---
+# Arroyo configuration
+# Connects Arroyo to PostgreSQL, Kafka, MinIO, and Iceberg
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: arroyo-config
+  namespace: data-arroyo
+  labels:
+    app: arroyo
+data:
+  # Database connection (shared PostgreSQL instance)
+  DATABASE_URL: "postgresql://postgres@postgres.data-storage.svc.cluster.local:5432/arroyo"
+
+  # Kafka bootstrap servers (internal cluster DNS)
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-broker.data-kafka.svc.cluster.local:9092"
+
+  # S3/MinIO configuration for state backend
+  S3_ENDPOINT: "http://minio.data-storage.svc.cluster.local:9000"
+  S3_REGION: "us-east-1"
+  S3_BUCKET: "arroyo-state"
+
+  # Iceberg catalog configuration
+  ICEBERG_CATALOG_TYPE: "rest"
+  ICEBERG_CATALOG_URI: "http://lakekeeper-chart.data-lakekeeper.svc.cluster.local:8181/catalog"
+  ICEBERG_WAREHOUSE: "marsfx"
+
+  # Arroyo configuration
+  ARROYO_CONTROLLER_ADDR: "arroyo-controller:9190"
+  ARROYO_API_ADDR: "0.0.0.0:8000"
+
+  # Logging
+  RUST_LOG: "info,arroyo=debug"
+
+  # Worker configuration
+  WORKER_SLOTS: "4"
+  CHECKPOINT_INTERVAL_SECONDS: "60"

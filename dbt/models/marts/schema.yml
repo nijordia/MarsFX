@@ -101,33 +101,24 @@ models:
             - currency_pair
             - candle_timestamp
 
-      # OHLC validity: low <= open, high, close
-      - dbt_expectations.expect_column_values_to_be_between:
-          column_name: low_price
-          max_value_column: open_price
-          row_condition: "open_price is not null"
+      # OHLC validity: low <= open, high, close and high >= open, low, close
+      - dbt_utils.expression_is_true:
+          expression: "low_price <= high_price"
           config:
             severity: error
 
-      - dbt_expectations.expect_column_values_to_be_between:
-          column_name: low_price
-          max_value_column: high_price
-          row_condition: "high_price is not null"
+      - dbt_utils.expression_is_true:
+          expression: "low_price <= open_price"
           config:
             severity: error
 
-      - dbt_expectations.expect_column_values_to_be_between:
-          column_name: low_price
-          max_value_column: close_price
-          row_condition: "close_price is not null"
+      - dbt_utils.expression_is_true:
+          expression: "low_price <= close_price"
           config:
             severity: error
 
-      # high >= open, low, close
-      - dbt_expectations.expect_column_values_to_be_between:
-          column_name: high_price
-          min_value_column: open_price
-          row_condition: "open_price is not null"
+      - dbt_utils.expression_is_true:
+          expression: "high_price >= open_price"
           config:
             severity: error
 

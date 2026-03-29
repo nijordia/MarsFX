@@ -292,7 +292,9 @@ class TickGenerator:
         message = json.dumps(event.to_dict()).encode('utf-8')
 
         try:
-            self.kafka_producer.send(topic, value=message)
+            # confluent-kafka uses produce() not send()
+            self.kafka_producer.produce(topic, value=message)
+            self.kafka_producer.poll(0)  # Trigger any callbacks
             self.stats.kafka_messages_sent += 1
         except Exception as e:
             logger.error("kafka_send_error", error=str(e), event_id=str(event.event_id))
@@ -310,11 +312,15 @@ class TickGenerator:
             key = tick.currency_pair.encode('utf-8')
 
             try:
-                self.kafka_producer.send(topic, value=message, key=key)
+                # confluent-kafka uses produce() not send()
+                self.kafka_producer.produce(topic, value=message, key=key)
                 self.stats.kafka_messages_sent += 1
             except Exception as e:
                 logger.error("kafka_send_error", error=str(e), tick_id=str(tick.tick_id))
                 self.stats.kafka_errors += 1
+
+        # Poll to trigger delivery callbacks and send buffered messages
+        self.kafka_producer.poll(0)
 
     def _write_ticks_to_parquet(self, ticks: List[FXTick]):
         """Buffer ticks and write to Parquet files when buffer is full"""
@@ -501,6 +507,11 @@ class TickGenerator:
             # Final checkpoint and flush
             self._flush_parquet_buffer()
             self.save_checkpoint()
+
+            # Flush Kafka producer to ensure all messages are sent
+            if self.kafka_producer:
+                logger.info("flushing_kafka_producer")
+                self.kafka_producer.flush()
 
             logger.info(
                 "generator_stopped",
