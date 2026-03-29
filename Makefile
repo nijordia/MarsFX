@@ -130,7 +130,8 @@ deploy-trino: deploy-lakekeeper ## Deploy Trino query engine
 	@helm upgrade --install trino trino/trino \
 		--namespace $(NS_DATA_TRINO) \
 		--create-namespace \
-		--values manifests/trino/values.yaml
+		--values manifests/trino/values.yaml \
+		--values manifests/trino/values.secret.yaml
 	@echo "⏳ Waiting for Trino coordinator to be ready..."
 	@$(KUBECTL) wait --namespace $(NS_DATA_TRINO) \
 		--for=condition=ready pod \

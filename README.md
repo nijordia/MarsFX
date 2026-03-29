@@ -38,13 +38,17 @@ sudo nano /etc/hosts
 # 127.0.0.1 minio.marsfx.local
 # 127.0.0.1 lakekeeper.marsfx.local
 
-# 2. Create cluster and deploy everything
+# 2. Set up Trino credentials (one-time setup)
+cp manifests/trino/values.secret.yaml.example manifests/trino/values.secret.yaml
+# Edit values.secret.yaml with your MinIO credentials (default: admin/minioadmin)
+
+# 3. Create cluster and deploy everything
 make deploy
 
-# 3. Bootstrap Lakekeeper (creates warehouse and namespace)
+# 4. Bootstrap Lakekeeper (creates warehouse and namespace)
 make bootstrap-lakekeeper
 
-# 4. Check status - all pods should be Running
+# 5. Check status - all pods should be Running
 make status
 ```
 
