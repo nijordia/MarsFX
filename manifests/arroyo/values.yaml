@@ -2,6 +2,7 @@
 # Docs: https://doc.arroyo.dev/deployment/kubernetes/
 
 # Use existing PostgreSQL (don't deploy a new one)
+# Password is in values.secret.yaml (copy from values.secret.yaml.example)
 postgresql:
   deploy: false
   externalDatabase:
@@ -9,7 +10,6 @@ postgresql:
     port: 5432
     name: arroyo
     user: postgres
-    password: postgres
 
 # Local filesystem for checkpoints and artifacts (kind cluster)
 artifactUrl: "/tmp/arroyo-data"

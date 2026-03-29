@@ -156,6 +156,8 @@ service-account*.json
 *-key.json
 *-credentials.yaml
 manifests/trino/values.secret.yaml
+manifests/arroyo/values.secret.yaml
+manifests/arroyo/arroyo-secrets.yaml
 
 # MinIO/S3 local data
 minio-data/

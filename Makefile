@@ -169,7 +169,8 @@ deploy-arroyo: deploy-kafka deploy-storage ## Deploy Arroyo stream processor
 	@helm upgrade --install arroyo arroyo/arroyo \
 		--namespace $(NS_DATA_ARROYO) \
 		--create-namespace \
-		-f manifests/arroyo/values.yaml
+		-f manifests/arroyo/values.yaml \
+		-f manifests/arroyo/values.secret.yaml
 	@echo "⏳ Waiting for Arroyo pods to be ready..."
 	@$(KUBECTL) wait --namespace $(NS_DATA_ARROYO) \
 		--for=condition=ready pod \
