@@ -11,7 +11,7 @@ models:
       - Apply data quality filters (prices > 0, ask >= bid)
       - Standardize column names
 
-      Source: iceberg.fx_data.raw_ticks
+      Source: iceberg.fx_data.raw_ticks_streaming
 
     meta:
       owner: "data-engineering"
@@ -30,9 +30,6 @@ models:
 
       - name: event_time
         description: "Kafka event timestamp"
-
-      - name: processing_time
-        description: "Timestamp when tick was processed (Arroyo or batch)"
 
       - name: currency_pair
         description: "Currency pair symbol (e.g., ECR/MRT)"

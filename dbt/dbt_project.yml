@@ -28,17 +28,15 @@ models:
     +materialized: view
     +on_schema_change: "fail"
 
-    # Staging models
+    # Staging models (table, not view — Iceberg REST catalog doesn't support views)
     staging:
-      +materialized: view
+      +materialized: table
       +schema: staging
       +tags: ["staging"]
-      +docs:
-        node_color: "#4A90E2"
 
     # Intermediate models
     intermediate:
-      +materialized: view
+      +materialized: table
       +schema: intermediate
       +tags: ["intermediate"]
 
@@ -94,11 +92,6 @@ snapshots:
     +strategy: timestamp
     +unique_key: id
     +updated_at: updated_at
-
-# Documentation
-docs:
-  mars_fx:
-    +node_color: "#7B68EE"
 
 # Variables
 vars:

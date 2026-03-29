@@ -43,6 +43,7 @@ mars_fx:
     local:
       type: trino
       method: none
+      user: dbt
       host: localhost
       port: 8080
       database: iceberg

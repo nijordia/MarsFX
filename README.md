@@ -536,7 +536,71 @@ make logs-arroyo-controller
 
 ---
 
-### Phase 5: Orchestration (TODO)
+### Phase 5: dbt Transformations (DONE ✅)
+
+**What**: Transform raw tick data into OHLC candles using dbt + Trino + Iceberg
+
+**Files to understand**:
+1. `dbt/dbt_project.yml` - Project config, model materialization settings, lookback windows
+2. `dbt/profiles.yml` - Trino connection profiles (dev, prod, local)
+3. `dbt/models/sources.yaml` - Source definitions (raw_ticks_streaming, economic_events)
+4. `dbt/models/staging/stg_fx_ticks.sql` - Staging model: type casting, currency pair splitting, data quality filters
+5. `dbt/models/marts/ohlc_candles_*.sql` - OHLC candle models (1min, 5min, 1h, 1d)
+6. `dbt/macros/ohlc_helpers.sql` - Reusable OHLC calculation macros
+7. `dbt/seeds/currency_pairs.csv` - Reference data for currency pairs
+8. `dbt/tests/verify_ohlc_logic.sql` - Custom OHLC validity test
+
+**Key Concepts**:
+- **Iceberg REST catalog**: Does not support views — all dbt models materialized as tables
+- **Incremental merge strategy**: OHLC models use `MERGE INTO` with lookback windows to handle late-arriving data
+- **Iceberg partitioning via dbt**: Uses `properties={"partitioning": "ARRAY['hour(candle_timestamp)']"}` in model config
+- **Trino syntax**: No PostgreSQL-style casts (`::integer`), use `CAST(x AS integer)` and Trino interval syntax (`interval '1' minute * N`)
+- **OHLC calculation**: Uses `row_number()` window functions for deterministic open/close price identification
+
+**Models created**:
+| Model | Rows | Granularity | Partitioned By |
+|-------|------|-------------|---------------|
+| `stg_fx_ticks` | 14,424 | tick-level | — |
+| `ohlc_candles_1min` | 366 | 1-minute | hour |
+| `ohlc_candles_5min` | 78 | 5-minute | day |
+| `ohlc_candles_1h` | 12 | hourly | month |
+| `ohlc_candles_1d` | 6 | daily | year |
+
+**Setup and run**:
+```bash
+# Port-forward Trino for local dbt access
+kubectl port-forward -n data-trino svc/trino 8080:8080 &
+
+# Install dbt-trino (in project venv)
+cd python && source venv/bin/activate
+pip install dbt-trino
+
+# Install dbt packages, seed, run, test
+cd ../dbt
+dbt deps --profiles-dir . --target local
+dbt seed --profiles-dir . --target local
+dbt run --profiles-dir . --target local
+dbt test --profiles-dir . --target local
+```
+
+**Verify in Trino**:
+```bash
+# Hourly OHLC candles
+kubectl exec -n data-trino deployment/trino-coordinator -- trino \
+  --output-format=ALIGNED \
+  --execute "SELECT candle_timestamp, currency_pair, open_price, high_price, low_price, close_price, trade_count FROM iceberg.fx_data_marts.ohlc_candles_1h ORDER BY candle_timestamp, currency_pair"
+
+# Daily candles
+kubectl exec -n data-trino deployment/trino-coordinator -- trino \
+  --output-format=ALIGNED \
+  --execute "SELECT * FROM iceberg.fx_data_marts.ohlc_candles_1d"
+
+# Staging row count
+kubectl exec -n data-trino deployment/trino-coordinator -- trino \
+  --execute "SELECT count(*) FROM iceberg.fx_data_staging.stg_fx_ticks"
+```
+
+### Phase 6: Orchestration (TODO)
 
 **What**: Schedule dbt runs with Dagster
 
