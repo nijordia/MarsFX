@@ -39,3 +39,6 @@ sqlalchemy==2.0.25
 # PostgreSQL (for metadata)
 psycopg2-binary>=2.9.0
 scipy>=1.11.0
+
+# Data contracts
+datacontract-cli[all]>=0.10.0

@@ -1,4 +1,4 @@
-.PHONY: help create-cluster delete-cluster deploy-namespaces deploy-ingress deploy-storage deploy-secrets deploy-pgbouncer deploy-lakekeeper deploy-trino deploy-kafka deploy-arroyo seed-data deploy clean clean-kafka clean-arroyo status
+.PHONY: help create-cluster delete-cluster deploy-namespaces deploy-ingress deploy-storage deploy-secrets deploy-pgbouncer deploy-lakekeeper deploy-trino deploy-kafka deploy-arroyo seed-data deploy clean clean-kafka clean-arroyo status contract-setup contract-lint contract-test-kafka contract-test-trino contract-test contract-export-dbt
 
 # Configuration
 CLUSTER_NAME := marsfx
@@ -334,3 +334,35 @@ check-iceberg: ## Check Iceberg tables in Lakekeeper
 	@echo "📊 Checking Iceberg tables..."
 	@$(KUBECTL) exec -it -n $(NS_DATA_TRINO) deployment/trino-coordinator -- \
 		trino --execute "USE lakehouse.fx_data; SHOW TABLES;"
+
+# --- Data Contract targets ---
+
+contract-setup: ## Install datacontract CLI in Python venv
+	@echo "📋 Installing datacontract CLI..."
+	@python/venv/bin/pip install "datacontract-cli[all]"
+	@echo "✅ datacontract CLI installed"
+
+contract-lint: ## Lint all data contracts
+	@echo "📋 Linting data contracts..."
+	@python/venv/bin/datacontract lint contracts/marsfx-raw-ticks.yaml
+	@python/venv/bin/datacontract lint contracts/marsfx-ohlc-candles.yaml
+	@echo "✅ All contracts valid"
+
+contract-test-kafka: ## Test raw ticks contract against live Kafka topic
+	@echo "📋 Testing raw ticks contract against Kafka..."
+	@python/venv/bin/datacontract test contracts/marsfx-raw-ticks.yaml --server kafka
+
+contract-test-trino: ## Test all contracts against Trino/Iceberg
+	@echo "📋 Testing raw ticks contract against Trino..."
+	@python/venv/bin/datacontract test contracts/marsfx-raw-ticks.yaml --server trino
+	@echo "📋 Testing OHLC candles contract against Trino..."
+	@python/venv/bin/datacontract test contracts/marsfx-ohlc-candles.yaml --server trino
+
+contract-test: contract-test-kafka contract-test-trino ## Test all contracts against all servers
+	@echo "✅ All contract tests passed"
+
+contract-export-dbt: ## Export contracts to dbt schema format (for drift comparison)
+	@echo "📋 Exporting contracts to dbt format..."
+	@python/venv/bin/datacontract export contracts/marsfx-raw-ticks.yaml --format dbt
+	@echo "---"
+	@python/venv/bin/datacontract export contracts/marsfx-ohlc-candles.yaml --format dbt
