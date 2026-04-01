@@ -1,4 +1,4 @@
-.PHONY: help create-cluster delete-cluster deploy-namespaces deploy-ingress deploy-storage deploy-secrets deploy-pgbouncer deploy-lakekeeper deploy-trino deploy-kafka deploy-arroyo seed-data deploy clean clean-kafka clean-arroyo status contract-setup contract-lint contract-test-kafka contract-test-trino contract-test contract-export-dbt
+.PHONY: help create-cluster delete-cluster deploy-namespaces deploy-ingress deploy-storage deploy-secrets deploy-pgbouncer deploy-lakekeeper deploy-trino deploy-kafka deploy-arroyo deploy-dagster seed-data deploy clean clean-kafka clean-arroyo status contract-setup contract-lint contract-test-kafka contract-test-trino contract-test contract-export-dbt
 
 # Configuration
 CLUSTER_NAME := marsfx
@@ -181,11 +181,37 @@ deploy-arroyo: deploy-kafka deploy-storage ## Deploy Arroyo stream processor
 	@echo "✅ Arroyo ready at http://localhost:5115"
 	@echo "📊 Access Arroyo UI to create streaming pipelines"
 
+deploy-dagster: deploy-trino deploy-storage ## Deploy Dagster orchestrator
+	@echo "🔄 Deploying Dagster orchestrator"
+	@echo "⏳ Building Dagster Docker image..."
+	@docker build -t marsfx-dagster:latest -f manifests/docker/Dockerfile.dagster .
+	@echo "📦 Loading image into kind cluster..."
+	@kind load docker-image marsfx-dagster:latest --name $(CLUSTER_NAME)
+	@echo "⏳ Creating Dagster database..."
+	@$(KUBECTL) apply -f manifests/dagster/dagster-secrets.yaml
+	@$(KUBECTL) delete job/dagster-init -n $(NS_DATA_DAGSTER) 2>/dev/null || true
+	@$(KUBECTL) apply -f manifests/dagster/dagster-init-job.yaml
+	@$(KUBECTL) wait --namespace $(NS_DATA_DAGSTER) \
+		--for=condition=complete job/dagster-init --timeout=120s || true
+	@echo "⏳ Deploying Dagster services..."
+	@$(KUBECTL) apply -k manifests/dagster/
+	@echo "⏳ Waiting for Dagster pods to be ready..."
+	@$(KUBECTL) wait --namespace $(NS_DATA_DAGSTER) \
+		--for=condition=ready pod \
+		--selector=app=dagster,component=webserver --timeout=300s
+	@echo "⏳ Exposing Dagster UI via NodePort..."
+	@$(KUBECTL) patch svc dagster-webserver -n $(NS_DATA_DAGSTER) \
+		-p '{"spec": {"type": "NodePort", "ports": [{"name": "http", "port": 3000, "targetPort": 3000, "nodePort": 30300}]}}'
+	@echo "✅ Dagster ready at http://localhost:3000"
+	@echo "📊 Access Dagster UI to view pipelines and schedules"
+
 build-images: ## Build custom Docker images for data loading
 	@echo "🏗️  Building custom Docker images"
 	@docker build -t marsfx-data-loader:latest -f manifests/docker/Dockerfile.data-loader .
+	@docker build -t marsfx-dagster:latest -f manifests/docker/Dockerfile.dagster .
 	@echo "📦 Loading images into kind cluster"
 	@kind load docker-image marsfx-data-loader:latest --name $(CLUSTER_NAME)
+	@kind load docker-image marsfx-dagster:latest --name $(CLUSTER_NAME)
 	@echo "✅ Images built and loaded"
 
 seed-data: deploy-trino build-images ## Seed initial FX reference data
@@ -201,13 +227,14 @@ seed-data: deploy-trino build-images ## Seed initial FX reference data
 		--timeout=300s || true
 	@echo "✅ Reference data seeded"
 
-deploy: create-cluster deploy-ingress deploy-secrets deploy-storage deploy-pgbouncer deploy-lakekeeper deploy-trino deploy-kafka deploy-arroyo ## Deploy entire stack
+deploy: create-cluster deploy-ingress deploy-secrets deploy-storage deploy-pgbouncer deploy-lakekeeper deploy-trino deploy-kafka deploy-arroyo deploy-dagster ## Deploy entire stack
 	@echo ""
 	@echo "✨ MarsFX platform deployed successfully!"
 	@echo ""
 	@echo "🌐 Access Points:"
 	@echo "  • Trino UI:      http://localhost:8080"
 	@echo "  • Arroyo UI:     http://localhost:5115"
+	@echo "  • Dagster UI:    http://localhost:3000"
 	@echo "  • MinIO Console: http://localhost:9001 (admin/minioadmin)"
 	@echo "  • Lakekeeper:    http://localhost:8181"
 	@echo "  • Kafka:         localhost:9092"
@@ -271,6 +298,9 @@ status: ## Check status of all components
 	@echo ""
 	@echo "🌊 Arroyo:"
 	@$(KUBECTL) get pods -n $(NS_DATA_ARROYO) -o wide 2>/dev/null || echo "  ❌ Arroyo namespace not found"
+	@echo ""
+	@echo "🔄 Dagster:"
+	@$(KUBECTL) get pods -n $(NS_DATA_DAGSTER) -o wide 2>/dev/null || echo "  ❌ Dagster namespace not found"
 
 logs-lakekeeper: ## Show Lakekeeper logs
 	@$(KUBECTL) logs -n $(NS_DATA_LAKEKEEPER) -l app.kubernetes.io/name=lakekeeper --tail=100 -f

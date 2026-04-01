@@ -1,0 +1,13 @@
+# Dagster instance configuration
+# Local dev: SQLite storage (no PostgreSQL required)
+
+storage:
+  sqlite:
+    base_dir: /home/sarble/.dagster/local
+
+run_launcher:
+  module: dagster.core.launcher
+  class: DefaultRunLauncher
+
+telemetry:
+  enabled: false

@@ -1,0 +1,3 @@
+[tool.dagster]
+module_name = "definitions"
+working_directory = "/home/sarble/Desktop/software/MarsFX/dagster"

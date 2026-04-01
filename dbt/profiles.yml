@@ -46,7 +46,7 @@ mars_fx:
       type: trino
       method: none
       user: dbt
-      host: trino.local.platform
+      host: localhost
       port: 8080
       database: iceberg
       schema: fx_data
