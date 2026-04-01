@@ -7,6 +7,7 @@ mars_fx:
     dev:
       type: trino
       method: none  # No authentication for local dev
+      user: dbt
       host: trino.data-trino.svc.cluster.local
       port: 8080
       database: iceberg  # Catalog name
@@ -26,6 +27,7 @@ mars_fx:
     prod:
       type: trino
       method: none
+      user: dbt
       host: trino.data-trino.svc.cluster.local
       port: 8080
       database: iceberg

@@ -460,7 +460,7 @@ CREATE TABLE iceberg_ticks (
   table_name = 'raw_ticks_streaming',
   type = 'sink',
   format = 'parquet',
-  'rolling_policy.interval' = interval '30 seconds'
+  'rolling_policy.interval' = interval '5 minutes'
 ) PARTITIONED BY (day(transaction_timestamp));
 
 INSERT INTO iceberg_ticks

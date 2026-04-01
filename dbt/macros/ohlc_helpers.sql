@@ -37,7 +37,7 @@
   #}
 
   {% if candle_interval == '1min' %}
-    ARRAY['hour(candle_timestamp)']
+    ARRAY['day(candle_timestamp)']
   {% elif candle_interval == '5min' %}
     ARRAY['day(candle_timestamp)']
   {% elif candle_interval == '1h' %}
@@ -204,5 +204,36 @@
       tags=['marts', 'ohlc', candle_interval]
     )
   }}
+
+{% endmacro %}
+
+
+{% macro get_incremental_test_bounds(model_name) %}
+  {#
+    Returns a WHERE clause for incremental test validation.
+    Only tests recent data to avoid expensive full-table scans.
+
+    Args:
+      model_name: Name of the model (e.g., 'ohlc_candles_1min')
+
+    Returns:
+      SQL WHERE clause fragment (e.g., "candle_timestamp > CURRENT_TIMESTAMP - INTERVAL 2 HOURS")
+  #}
+
+  {% if model_name == 'ohlc_candles_1min' %}
+    candle_timestamp > CURRENT_TIMESTAMP - INTERVAL 2 HOURS
+
+  {% elif model_name == 'ohlc_candles_5min' %}
+    candle_timestamp > CURRENT_TIMESTAMP - INTERVAL 1 HOUR
+
+  {% elif model_name == 'ohlc_candles_1h' %}
+    candle_timestamp > CURRENT_TIMESTAMP - INTERVAL 3 HOURS
+
+  {% elif model_name == 'ohlc_candles_1d' %}
+    candle_timestamp > CURRENT_TIMESTAMP - INTERVAL 2 DAYS
+
+  {% else %}
+    {{ exceptions.raise_compiler_error("Unknown model for incremental test bounds: " ~ model_name) }}
+  {% endif %}
 
 {% endmacro %}

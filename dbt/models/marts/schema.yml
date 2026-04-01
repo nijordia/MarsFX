@@ -8,7 +8,7 @@ models:
 
       Incremental model with 5-minute lookback window to handle late-arriving data.
 
-      Partitioned by hour(candle_timestamp) for efficient time-based queries.
+      Partitioned by day(candle_timestamp) for efficient time-based queries.
 
     meta:
       owner: "data-engineering"
@@ -96,29 +96,34 @@ models:
           - not_null
 
     tests:
-      - dbt_utils.unique_combination_of_columns:
+      - incremental_unique_combination_of_columns:
           combination_of_columns:
             - currency_pair
             - candle_timestamp
+          model_name: 'ohlc_candles_1min'
 
       # OHLC validity: low <= open, high, close and high >= open, low, close
-      - dbt_utils.expression_is_true:
+      - incremental_expression_is_true:
           expression: "low_price <= high_price"
+          model_name: 'ohlc_candles_1min'
           config:
             severity: error
 
-      - dbt_utils.expression_is_true:
+      - incremental_expression_is_true:
           expression: "low_price <= open_price"
+          model_name: 'ohlc_candles_1min'
           config:
             severity: error
 
-      - dbt_utils.expression_is_true:
+      - incremental_expression_is_true:
           expression: "low_price <= close_price"
+          model_name: 'ohlc_candles_1min'
           config:
             severity: error
 
-      - dbt_utils.expression_is_true:
+      - incremental_expression_is_true:
           expression: "high_price >= open_price"
+          model_name: 'ohlc_candles_1min'
           config:
             severity: error
 
@@ -172,10 +177,11 @@ models:
               values: ['5min']
 
     tests:
-      - dbt_utils.unique_combination_of_columns:
+      - incremental_unique_combination_of_columns:
           combination_of_columns:
             - currency_pair
             - candle_timestamp
+          model_name: 'ohlc_candles_5min'
 
   - name: ohlc_candles_1h
     description: |
@@ -229,10 +235,11 @@ models:
               values: ['1h']
 
     tests:
-      - dbt_utils.unique_combination_of_columns:
+      - incremental_unique_combination_of_columns:
           combination_of_columns:
             - currency_pair
             - candle_timestamp
+          model_name: 'ohlc_candles_1h'
 
   - name: ohlc_candles_1d
     description: |
@@ -300,7 +307,8 @@ models:
               values: ['1d']
 
     tests:
-      - dbt_utils.unique_combination_of_columns:
+      - incremental_unique_combination_of_columns:
           combination_of_columns:
             - currency_pair
             - candle_timestamp
+          model_name: 'ohlc_candles_1d'
