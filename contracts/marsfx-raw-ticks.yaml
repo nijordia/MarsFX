@@ -1,149 +1,136 @@
-dataContractSpecification: 3.1.0
+apiVersion: v3.0.2
+kind: DataContract
 id: marsfx-raw-ticks
-info:
-  title: MarsFX Raw FX Ticks
-  version: 1.0.0
-  description: |
-    Raw FX tick data produced by the MarsFX Python generator.
-    Pipeline: Python generator → Kafka (marsfx.raw.ticks) → Arroyo → Iceberg (raw_ticks_streaming).
-
-    This contract defines the interface between the ingestion domain (Python + Kafka + Arroyo)
-    and the analytics domain (dbt + Trino). Downstream consumers can rely on the schema,
-    freshness, and quality guarantees defined here.
-  owner: data-engineering
-  contact:
-    name: MarsFX Data Engineering
-  status: active
-
-schema:
-  tables:
-    - name: raw_ticks_streaming
-      description: Individual FX tick data points written by Arroyo from Kafka to Iceberg
-      type: table
-      columns:
-        - name: tick_id
-          dataType: string
-          required: true
-          unique: true
-          description: Unique identifier for each tick (UUID)
-        - name: transaction_timestamp
-          dataType: timestamp
-          required: true
-          description: Timestamp when the trade occurred (microsecond precision)
-        - name: currency_pair
-          dataType: string
-          required: true
-          enum:
-            - ECR/MRT
-            - ECR/LCR
-            - ECR/AMC
-            - MRT/LCR
-            - MRT/AMC
-            - LCR/AMC
-          description: Currency pair symbol
-        - name: bid_price
-          dataType: double
-          required: true
-          description: Best bid price at transaction time
-        - name: ask_price
-          dataType: double
-          required: true
-          description: Best ask price at transaction time
-        - name: mid_price
-          dataType: double
-          required: true
-          description: Mid price ((bid + ask) / 2)
-        - name: spread_bps
-          dataType: double
-          required: false
-          description: Bid-ask spread in basis points
-        - name: trade_price
-          dataType: double
-          required: true
-          description: Actual execution price
-        - name: volume
-          dataType: double
-          required: true
-          description: Trade volume/size
-        - name: exchange_location
-          dataType: string
-          required: false
-          enum:
-            - Earth_FX_Hub
-            - Mars_Central_Exchange
-            - Lunar_Trading_Post
-            - Asteroid_Belt_Hub
-          description: Exchange where the trade occurred
-        - name: trader_type
-          dataType: string
-          required: false
-          enum:
-            - institutional
-            - retail
-            - mining_corp
-            - government
-          description: Type of market participant
-        - name: event_time
-          dataType: timestamp
-          required: false
-          description: Kafka event timestamp (used for freshness SLA)
-
-quality:
-  type: SodaCL
-  specification:
-    checks for raw_ticks_streaming:
-      - row_count > 0
-      - freshness(event_time) < 15m
-      - missing_count(tick_id) = 0
-      - invalid_count(currency_pair) = 0
-
-sla:
-  availability:
-    percentage: "95.0%"
-    description: Ticks flowing into Kafka and landing in Iceberg
-  freshness:
-    threshold: 900s
-    timestampField: event_time
-    description: |
-      Data freshness measured from event_time (Kafka produce timestamp) to current time.
-      Warn after 5 minutes, error after 15 minutes.
-  retention:
-    period: 365d
-    description: Keep raw tick data for 1 year
-
-servers:
-  kafka:
-    type: kafka
-    host: localhost:9092
-    topic: marsfx.raw.ticks
-    format: json
-    description: Source Kafka topic for raw tick events
-  trino:
-    type: trino
-    host: localhost
-    port: 8080
-    protocol: http
-    catalog: iceberg
-    schema: fx_data
-    description: Iceberg table location in Trino for query and validation
-
-terms:
+name: MarsFX Raw FX Ticks
+version: 1.0.0
+status: active
+description:
   purpose: |
-    Raw tick data serves as the canonical source for FX market activity.
-    Used for OHLC candle aggregation, trend analysis, and market reporting.
+    Raw FX tick data serves as the canonical source for FX market activity.
+    Produced by the MarsFX Python generator and streamed through Kafka.
   usage: |
     Internal analytics and OHLC aggregation. Source data for dbt transformations.
     Consumers must validate tick timing and price consistency before use.
   limitations: |
     Simulated data from MarsFX Python generator. Not real financial data.
     For demonstration and learning purposes only.
-  expiration: null
+
+schema:
+  - name: raw_ticks_streaming
+    physicalType: TABLE
+    description: Individual FX tick data points written by Arroyo from Kafka to Iceberg
+    properties:
+      - name: tick_id
+        logicalType: string
+        physicalType: UUID
+        description: Unique identifier for each tick (UUID)
+        required: true
+        unique: true
+        primaryKey: true
+      - name: transaction_timestamp
+        logicalType: date
+        physicalType: TIMESTAMP
+        description: Timestamp when the trade occurred (microsecond precision)
+        required: true
+      - name: currency_pair
+        logicalType: string
+        physicalType: VARCHAR
+        description: Currency pair symbol
+        required: true
+        examples:
+          - ECR/MRT
+          - ECR/LCR
+          - MRT/AMC
+      - name: bid_price
+        logicalType: number
+        physicalType: DOUBLE
+        description: Best bid price at transaction time
+        required: true
+      - name: ask_price
+        logicalType: number
+        physicalType: DOUBLE
+        description: Best ask price at transaction time
+        required: true
+      - name: mid_price
+        logicalType: number
+        physicalType: DOUBLE
+        description: Mid price ((bid + ask) / 2)
+        required: true
+      - name: spread_bps
+        logicalType: number
+        physicalType: DOUBLE
+        description: Bid-ask spread in basis points
+        required: false
+      - name: trade_price
+        logicalType: number
+        physicalType: DOUBLE
+        description: Actual execution price
+        required: true
+      - name: volume
+        logicalType: number
+        physicalType: DOUBLE
+        description: Trade volume/size
+        required: true
+      - name: exchange_location
+        logicalType: string
+        physicalType: VARCHAR
+        description: Exchange where the trade occurred
+        required: false
+        examples:
+          - Earth_FX_Hub
+          - Mars_Central_Exchange
+      - name: trader_type
+        logicalType: string
+        physicalType: VARCHAR
+        description: Type of market participant
+        required: false
+        examples:
+          - institutional
+          - retail
+          - mining_corp
+      - name: event_time
+        logicalType: date
+        physicalType: TIMESTAMP
+        description: Kafka event timestamp (used for freshness SLA)
+        required: false
+
+servers:
+  - server: kafka
+    type: kafka
+    host: localhost:9092
+    topic: marsfx.raw.ticks
+    format: json
+    description: Source Kafka topic for raw tick events
+  - server: trino
+    type: trino
+    host: localhost
+    port: 8080
+    catalog: iceberg
+    schema: fx_data
+    description: Iceberg table location in Trino for query and validation
 
 team:
   - name: data-engineering
-    role: owner
     description: MarsFX Data Engineering Team
-    contact: data-eng@marsfx.local
-  - name: analytics
-    role: consumer
-    description: Analytics team consuming tick data for reporting
+    members:
+      - username: data-eng@marsfx.local
+        role: owner
+
+slaProperties:
+  - property: availability
+    value: "95"
+    unit: percent
+    description: Ticks flowing into Kafka and landing in Iceberg
+  - property: freshness
+    value: "15"
+    unit: minutes
+    description: Data freshness SLA - warn at 5min, error at 15min
+  - property: retention
+    value: "365"
+    unit: days
+    description: Keep raw tick data for 1 year
+
+tags:
+  - fx-market
+  - real-time
+  - streaming

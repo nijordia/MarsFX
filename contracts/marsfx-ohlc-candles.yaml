@@ -1,332 +1,248 @@
-dataContractSpecification: 3.1.0
+apiVersion: v3.0.2
+kind: DataContract
 id: marsfx-ohlc-candles
-info:
-  title: MarsFX OHLC Candle Aggregations
-  version: 1.0.0
-  description: |
-    OHLC (Open-High-Low-Close) price candles at 1min, 5min, 1h, and 1d granularities.
-    Built from raw tick data via dbt staging and mart transformations.
-
-    Source: iceberg.fx_data.raw_ticks_streaming → stg_fx_ticks → ohlc_candles_*
-
-    This contract defines the interface between the analytics domain (dbt transformations)
-    and downstream consumers (dashboards, reports, APIs). Consumers can rely on the schema,
-    quality rules (OHLC validity), and freshness guarantees defined here.
-  owner: data-engineering
-  contact:
-    name: MarsFX Data Engineering
-  status: active
-
-schema:
-  tables:
-    - name: ohlc_candles_1min
-      description: 1-minute OHLC candles aggregated from raw FX tick data
-      type: table
-      columns:
-        - name: candle_timestamp
-          dataType: timestamp
-          required: true
-          description: Start of the 1-minute candle period (truncated to minute)
-        - name: currency_pair
-          dataType: string
-          required: true
-          enum:
-            - ECR/MRT
-            - ECR/LCR
-            - ECR/AMC
-            - MRT/LCR
-            - MRT/AMC
-            - LCR/AMC
-          description: Currency pair symbol
-        - name: base_currency
-          dataType: string
-          required: true
-          description: Base currency code (first in pair)
-        - name: quote_currency
-          dataType: string
-          required: true
-          description: Quote currency code (second in pair)
-        - name: open_price
-          dataType: double
-          required: true
-          description: First trade price in the candle period
-        - name: high_price
-          dataType: double
-          required: true
-          description: Highest trade price in the candle period
-        - name: low_price
-          dataType: double
-          required: true
-          description: Lowest trade price in the candle period
-        - name: close_price
-          dataType: double
-          required: true
-          description: Last trade price in the candle period
-        - name: total_volume
-          dataType: double
-          required: true
-          description: Sum of all trade volumes in the candle period
-        - name: trade_count
-          dataType: long
-          required: true
-          description: Number of trades in the candle period
-        - name: avg_spread_bps
-          dataType: double
-          required: false
-          description: Average bid-ask spread in basis points
-        - name: price_change
-          dataType: double
-          required: false
-          description: Absolute price change (close - open)
-        - name: price_change_pct
-          dataType: double
-          required: false
-          description: Percentage price change ((close - open) / open * 100)
-        - name: volatility_pct
-          dataType: double
-          required: false
-          description: Intra-period volatility ((high - low) / open * 100)
-        - name: calculated_at
-          dataType: timestamp
-          required: true
-          description: Timestamp when this candle was calculated
-
-    - name: ohlc_candles_5min
-      description: 5-minute OHLC candles aggregated from raw FX tick data
-      type: table
-      columns:
-        - name: candle_timestamp
-          dataType: timestamp
-          required: true
-        - name: currency_pair
-          dataType: string
-          required: true
-          enum:
-            - ECR/MRT
-            - ECR/LCR
-            - ECR/AMC
-            - MRT/LCR
-            - MRT/AMC
-            - LCR/AMC
-        - name: base_currency
-          dataType: string
-          required: true
-        - name: quote_currency
-          dataType: string
-          required: true
-        - name: open_price
-          dataType: double
-          required: true
-        - name: high_price
-          dataType: double
-          required: true
-        - name: low_price
-          dataType: double
-          required: true
-        - name: close_price
-          dataType: double
-          required: true
-        - name: total_volume
-          dataType: double
-          required: true
-        - name: trade_count
-          dataType: long
-          required: true
-        - name: avg_spread_bps
-          dataType: double
-          required: false
-        - name: price_change
-          dataType: double
-          required: false
-        - name: price_change_pct
-          dataType: double
-          required: false
-        - name: volatility_pct
-          dataType: double
-          required: false
-        - name: calculated_at
-          dataType: timestamp
-          required: true
-
-    - name: ohlc_candles_1h
-      description: 1-hour OHLC candles aggregated from raw FX tick data
-      type: table
-      columns:
-        - name: candle_timestamp
-          dataType: timestamp
-          required: true
-        - name: currency_pair
-          dataType: string
-          required: true
-          enum:
-            - ECR/MRT
-            - ECR/LCR
-            - ECR/AMC
-            - MRT/LCR
-            - MRT/AMC
-            - LCR/AMC
-        - name: base_currency
-          dataType: string
-          required: true
-        - name: quote_currency
-          dataType: string
-          required: true
-        - name: open_price
-          dataType: double
-          required: true
-        - name: high_price
-          dataType: double
-          required: true
-        - name: low_price
-          dataType: double
-          required: true
-        - name: close_price
-          dataType: double
-          required: true
-        - name: total_volume
-          dataType: double
-          required: true
-        - name: trade_count
-          dataType: long
-          required: true
-        - name: avg_spread_bps
-          dataType: double
-          required: false
-        - name: price_change
-          dataType: double
-          required: false
-        - name: price_change_pct
-          dataType: double
-          required: false
-        - name: volatility_pct
-          dataType: double
-          required: false
-        - name: calculated_at
-          dataType: timestamp
-          required: true
-
-    - name: ohlc_candles_1d
-      description: Daily OHLC candles aggregated from raw FX tick data
-      type: table
-      columns:
-        - name: candle_timestamp
-          dataType: timestamp
-          required: true
-          description: Start of the daily candle period (midnight)
-        - name: currency_pair
-          dataType: string
-          required: true
-          enum:
-            - ECR/MRT
-            - ECR/LCR
-            - ECR/AMC
-            - MRT/LCR
-            - MRT/AMC
-            - LCR/AMC
-        - name: base_currency
-          dataType: string
-          required: true
-        - name: quote_currency
-          dataType: string
-          required: true
-        - name: open_price
-          dataType: double
-          required: true
-        - name: high_price
-          dataType: double
-          required: true
-        - name: low_price
-          dataType: double
-          required: true
-        - name: close_price
-          dataType: double
-          required: true
-        - name: total_volume
-          dataType: double
-          required: true
-        - name: trade_count
-          dataType: long
-          required: true
-        - name: avg_spread_bps
-          dataType: double
-          required: false
-        - name: price_change
-          dataType: double
-          required: false
-        - name: price_change_pct
-          dataType: double
-          required: false
-        - name: volatility_pct
-          dataType: double
-          required: false
-        - name: calculated_at
-          dataType: timestamp
-          required: true
-
-quality:
-  type: SodaCL
-  specification:
-    checks for ohlc_candles_1min:
-      - row_count > 0
-      - invalid_count(low_price <= high_price) = 0
-      - invalid_count(low_price <= open_price) = 0
-      - invalid_count(low_price <= close_price) = 0
-      - invalid_count(high_price >= open_price) = 0
-    checks for ohlc_candles_5min:
-      - row_count > 0
-      - invalid_count(low_price <= high_price) = 0
-    checks for ohlc_candles_1h:
-      - row_count > 0
-      - invalid_count(low_price <= high_price) = 0
-    checks for ohlc_candles_1d:
-      - row_count > 0
-      - invalid_count(low_price <= high_price) = 0
-
-sla:
-  availability:
-    percentage: "95.0%"
-    description: OHLC candles queryable in Trino after dbt run
-  freshness:
-    threshold: 600s
-    timestampField: calculated_at
-    description: |
-      1-min candles should be no more than 10 minutes stale.
-      Higher granularities have proportionally longer thresholds:
-      5min: 30min, 1h: 2h, 1d: 25h.
-  retention:
-    period: 365d
-    description: Keep OHLC candle data for 1 year
-
-servers:
-  trino:
-    type: trino
-    host: localhost
-    port: 8080
-    protocol: http
-    catalog: iceberg
-    schema: fx_data
-    description: Iceberg tables in Trino for OHLC candle queries
-
-terms:
+name: MarsFX OHLC Candle Aggregations
+version: 1.0.0
+status: active
+description:
   purpose: |
     OHLC candles serve as the primary data product for time-series analysis.
-    Used for trend detection, volatility analysis, and market reporting.
+    Built from raw tick data via dbt staging and mart transformations.
   usage: |
     Internal analytics dashboards, reporting, and time-series analysis.
     Consumers must respect candle granularity and lookback windows.
   limitations: |
     Derived from simulated MarsFX tick data. Not real financial data.
     For demonstration and learning purposes only.
-  expiration: null
+
+schema:
+  - name: ohlc_candles_1min
+    physicalType: TABLE
+    description: 1-minute OHLC candles aggregated from raw FX tick data
+    properties:
+      - name: candle_timestamp
+        logicalType: date
+        physicalType: TIMESTAMP
+        description: Start of the 1-minute candle period
+        required: true
+        primaryKey: true
+      - name: currency_pair
+        logicalType: string
+        physicalType: VARCHAR
+        description: Currency pair symbol
+        required: true
+        primaryKey: true
+        examples:
+          - ECR/MRT
+          - MRT/LCR
+      - name: open_price
+        logicalType: number
+        physicalType: DOUBLE
+        description: First trade price in the candle period
+        required: true
+      - name: high_price
+        logicalType: number
+        physicalType: DOUBLE
+        description: Highest trade price in the candle period
+        required: true
+      - name: low_price
+        logicalType: number
+        physicalType: DOUBLE
+        description: Lowest trade price in the candle period
+        required: true
+      - name: close_price
+        logicalType: number
+        physicalType: DOUBLE
+        description: Last trade price in the candle period
+        required: true
+      - name: total_volume
+        logicalType: number
+        physicalType: DOUBLE
+        description: Sum of all trade volumes in the candle period
+        required: true
+      - name: trade_count
+        logicalType: integer
+        physicalType: BIGINT
+        description: Number of trades in the candle period
+        required: true
+      - name: avg_spread_bps
+        logicalType: number
+        physicalType: DOUBLE
+        description: Average bid-ask spread in basis points
+        required: false
+      - name: volatility_pct
+        logicalType: number
+        physicalType: DOUBLE
+        description: Intra-period volatility ((high - low) / open * 100)
+        required: false
+      - name: calculated_at
+        logicalType: date
+        physicalType: TIMESTAMP
+        description: Timestamp when this candle was calculated
+        required: true
+
+  - name: ohlc_candles_5min
+    physicalType: TABLE
+    description: 5-minute OHLC candles aggregated from raw FX tick data
+    properties:
+      - name: candle_timestamp
+        logicalType: date
+        physicalType: TIMESTAMP
+        required: true
+        primaryKey: true
+      - name: currency_pair
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        primaryKey: true
+      - name: open_price
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: high_price
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: low_price
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: close_price
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: total_volume
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: trade_count
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+      - name: calculated_at
+        logicalType: date
+        physicalType: TIMESTAMP
+        required: true
+
+  - name: ohlc_candles_1h
+    physicalType: TABLE
+    description: 1-hour OHLC candles aggregated from raw FX tick data
+    properties:
+      - name: candle_timestamp
+        logicalType: date
+        physicalType: TIMESTAMP
+        required: true
+        primaryKey: true
+      - name: currency_pair
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        primaryKey: true
+      - name: open_price
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: high_price
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: low_price
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: close_price
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: total_volume
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: trade_count
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+      - name: calculated_at
+        logicalType: date
+        physicalType: TIMESTAMP
+        required: true
+
+  - name: ohlc_candles_1d
+    physicalType: TABLE
+    description: Daily OHLC candles aggregated from raw FX tick data
+    properties:
+      - name: candle_timestamp
+        logicalType: date
+        physicalType: TIMESTAMP
+        required: true
+        primaryKey: true
+        description: Start of the daily candle period (midnight)
+      - name: currency_pair
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        primaryKey: true
+      - name: open_price
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: high_price
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: low_price
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: close_price
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: total_volume
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+      - name: trade_count
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+      - name: calculated_at
+        logicalType: date
+        physicalType: TIMESTAMP
+        required: true
+
+servers:
+  - server: trino
+    type: trino
+    host: localhost
+    port: 8080
+    catalog: iceberg
+    schema: fx_data
+    description: Iceberg tables in Trino for OHLC candle queries
 
 team:
   - name: data-engineering
-    role: owner
     description: MarsFX Data Engineering Team (dbt maintainers)
-    contact: data-eng@marsfx.local
-  - name: analytics
-    role: consumer
-    description: Analytics team consuming OHLC data for reporting
-  - name: trading
-    role: consumer
-    description: Trading team consuming live candle data for alerts
+    members:
+      - username: data-eng@marsfx.local
+        role: owner
+
+slaProperties:
+  - property: availability
+    value: "95"
+    unit: percent
+    description: OHLC candles queryable in Trino after dbt run
+  - property: freshness
+    value: "10"
+    unit: minutes
+    description: 1-min candles should be no more than 10 minutes stale
+  - property: retention
+    value: "365"
+    unit: days
+    description: Keep OHLC candle data for 1 year
+
+tags:
+  - fx-market
+  - ohlc
+  - aggregated
+  - analytics
