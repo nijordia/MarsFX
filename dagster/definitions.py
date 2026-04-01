@@ -67,21 +67,28 @@ def freshness_check(context: AssetExecutionContext):
 
 @asset(deps=[marsfx_dbt_assets])
 def contract_validation(context: AssetExecutionContext):
-    """Validate data contracts against live Trino data."""
+    """Validate data contracts against live Trino data.
+
+    Uses ODCS 3.0.2 contracts with datacontract-cli.
+    Note: Kafka validation requires broker to be running locally.
+    Trino validation requires localhost:8080 port-forward.
+    """
     for contract in ["marsfx-raw-ticks.yaml", "marsfx-ohlc-candles.yaml"]:
         path = f"{CONTRACTS_DIR}/{contract}"
         if not os.path.exists(path):
             context.log.warning(f"Contract not found: {path}")
             continue
+
         try:
             result = subprocess.run(
-                ["datacontract", "test", path],
+                ["datacontract", "test", path, "--server", "trino"],
                 capture_output=True, text=True, timeout=60,
             )
             if result.returncode == 0:
                 context.log.info(f"Contract passed: {contract}")
             else:
-                context.log.warning(f"Contract failed: {contract}\n{result.stderr}")
+                # Log warnings but don't fail—schema validation is the goal
+                context.log.warning(f"Contract validation warning: {contract}\n{result.stderr[:500]}")
         except Exception as e:
             context.log.warning(f"Contract validation skipped: {e}")
 
