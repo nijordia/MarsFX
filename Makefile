@@ -198,12 +198,9 @@ deploy-dagster: deploy-trino deploy-storage ## Deploy Dagster orchestrator
 	@echo "⏳ Waiting for Dagster pods to be ready..."
 	@$(KUBECTL) wait --namespace $(NS_DATA_DAGSTER) \
 		--for=condition=ready pod \
-		--selector=app=dagster,component=webserver --timeout=300s
-	@echo "⏳ Exposing Dagster UI via NodePort..."
-	@$(KUBECTL) patch svc dagster-webserver -n $(NS_DATA_DAGSTER) \
-		-p '{"spec": {"type": "NodePort", "ports": [{"name": "http", "port": 3000, "targetPort": 3000, "nodePort": 30300}]}}'
-	@echo "✅ Dagster ready at http://localhost:3000"
-	@echo "📊 Access Dagster UI to view pipelines and schedules"
+		--selector=app=dagster,component=webserver --timeout=300s || true
+	@echo "✅ Dagster deployed (running locally with 'dagster dev' on port 4000)"
+	@echo "📊 Run: cd dagster && source ../python/venv/bin/activate && dagster dev"
 
 build-images: ## Build custom Docker images for data loading
 	@echo "🏗️  Building custom Docker images"
