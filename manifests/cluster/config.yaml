@@ -58,10 +58,6 @@ nodes:
       - containerPort: 30115
         hostPort: 5115
         protocol: TCP
-      # Dagster UI (will be added later)
-      - containerPort: 30300
-        hostPort: 3000
-        protocol: TCP
 
     # Add node labels for pod scheduling
     labels:

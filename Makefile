@@ -224,14 +224,14 @@ seed-data: deploy-trino build-images ## Seed initial FX reference data
 		--timeout=300s || true
 	@echo "✅ Reference data seeded"
 
-deploy: create-cluster deploy-ingress deploy-secrets deploy-storage deploy-pgbouncer deploy-lakekeeper deploy-trino deploy-kafka deploy-arroyo deploy-dagster ## Deploy entire stack
+deploy: create-cluster deploy-ingress deploy-secrets deploy-storage deploy-pgbouncer deploy-lakekeeper deploy-trino deploy-kafka deploy-arroyo ## Deploy entire stack
 	@echo ""
 	@echo "✨ MarsFX platform deployed successfully!"
 	@echo ""
 	@echo "🌐 Access Points:"
 	@echo "  • Trino UI:      http://localhost:8080"
 	@echo "  • Arroyo UI:     http://localhost:5115"
-	@echo "  • Dagster UI:    http://localhost:3000"
+	@echo "  • Dagster:       Run locally with 'dagster dev' (port 4000)"
 	@echo "  • MinIO Console: http://localhost:9001 (admin/minioadmin)"
 	@echo "  • Lakekeeper:    http://localhost:8181"
 	@echo "  • Kafka:         localhost:9092"

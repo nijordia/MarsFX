@@ -217,20 +217,20 @@
       model_name: Name of the model (e.g., 'ohlc_candles_1min')
 
     Returns:
-      SQL WHERE clause fragment (e.g., "candle_timestamp > CURRENT_TIMESTAMP - INTERVAL 2 HOURS")
+      SQL WHERE clause fragment (e.g., "candle_timestamp > CURRENT_TIMESTAMP - INTERVAL '2' HOUR")
   #}
 
   {% if model_name == 'ohlc_candles_1min' %}
-    candle_timestamp > CURRENT_TIMESTAMP - INTERVAL 2 HOURS
+    candle_timestamp > CURRENT_TIMESTAMP - INTERVAL '2' HOUR
 
   {% elif model_name == 'ohlc_candles_5min' %}
-    candle_timestamp > CURRENT_TIMESTAMP - INTERVAL 1 HOUR
+    candle_timestamp > CURRENT_TIMESTAMP - INTERVAL '1' HOUR
 
   {% elif model_name == 'ohlc_candles_1h' %}
-    candle_timestamp > CURRENT_TIMESTAMP - INTERVAL 3 HOURS
+    candle_timestamp > CURRENT_TIMESTAMP - INTERVAL '3' HOUR
 
   {% elif model_name == 'ohlc_candles_1d' %}
-    candle_timestamp > CURRENT_TIMESTAMP - INTERVAL 2 DAYS
+    candle_timestamp > CURRENT_TIMESTAMP - INTERVAL '2' DAY
 
   {% else %}
     {{ exceptions.raise_compiler_error("Unknown model for incremental test bounds: " ~ model_name) }}
