@@ -1,0 +1,14 @@
+# PgBouncer Phase 1 Fixes (High Priority)
+# Pin image tag from 'latest' to specific version
+# Apply with: helm upgrade --install pgbouncer manifests/pgbouncer/chart/ -n data-pgbouncer -f values-phase1-fixes.yaml
+
+image:
+  repository: edoburu/pgbouncer
+  tag: "1.21.0"  # Was: latest → now pinned to specific version
+  pullPolicy: IfNotPresent
+
+# Note: PgBouncer already has:
+# - Resource requests/limits ✅
+# - Liveness probe (tcp-socket :5432) ✅
+# - Readiness probe (tcp-socket :5432) ✅
+# - Security context (runAsNonRoot: true) ✅

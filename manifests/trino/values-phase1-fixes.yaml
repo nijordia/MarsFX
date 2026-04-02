@@ -1,0 +1,44 @@
+# Trino Phase 1 Fixes (High Priority)
+# Add readiness probe to coordinator, add health checks to workers
+# Apply with: helm upgrade --install trino trino/trino -n data-trino -f values.yaml -f values.secret.yaml -f values-phase1-fixes.yaml
+
+# Coordinator configuration
+coordinator:
+  # Resource requests/limits already defined in values.yaml ✅
+  # Liveness probe already defined: GET /v1/info ✅
+
+  # Add readiness probe (missing in original)
+  readinessProbe:
+    httpGet:
+      path: /v1/info
+      port: 8080
+      scheme: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 2
+
+# Worker configuration
+worker:
+  # Resource requests/limits already defined in values.yaml ✅
+
+  # Add liveness and readiness probes (missing in original)
+  livenessProbe:
+    httpGet:
+      path: /v1/info
+      port: 8080
+      scheme: http
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /v1/info
+      port: 8080
+      scheme: http
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 2

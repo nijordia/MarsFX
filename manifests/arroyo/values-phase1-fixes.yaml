@@ -1,0 +1,27 @@
+# Arroyo Phase 1 Fixes (High Priority)
+# Add resource limits and health checks
+# Apply with: helm upgrade --install arroyo arroyo/arroyo -n data-arroyo -f values.yaml -f values.secret.yaml -f values-phase1-fixes.yaml
+
+# Controller resource limits
+controller:
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# Worker resource limits (applies to Jobs spawned by Kubernetes scheduler)
+worker:
+  resources:
+    requests:
+      cpu: 900m
+      memory: 512Mi
+    limits:
+      cpu: 1500m
+      memory: 2Gi
+
+# Note: Arroyo already has health checks via http://:admin/status
+# Liveness probe: delay=5s, period=10s ✅
+# Readiness probe: delay=5s, period=10s ✅

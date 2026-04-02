@@ -1,0 +1,53 @@
+# Lakekeeper Phase 1 Fixes (High Priority)
+# Add resource limits and health checks
+# Apply with: helm upgrade --install lakekeeper-chart lakekeeper/lakekeeper -n data-lakekeeper -f chart/values.yaml -f chart/values-phase1-fixes.yaml
+
+lakekeeper:
+  catalog:
+    # REST API resources
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+
+    # Health check probe
+    livenessProbe:
+      enabled: true
+      httpGet:
+        path: /health
+        port: 8181
+        scheme: HTTP
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+    readinessProbe:
+      enabled: true
+      httpGet:
+        path: /health
+        port: 8181
+        scheme: HTTP
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+
+  # PostgreSQL StatefulSet resources (via lakekeeper-pg chart dependency)
+  postgresql:
+    primary:
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+      # Already has pg_isready probe via the chart ✅
+
+# Note: The lakekeeper-pg StatefulSet (PostgreSQL for Lakekeeper) already has:
+# Liveness probe: exec pg_isready delay=10s period=10s ✅
+# Readiness probe: exec pg_isready delay=10s period=10s ✅

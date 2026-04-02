@@ -86,12 +86,60 @@ INSERT INTO iceberg.fx_data.test_table VALUES
 SELECT * FROM iceberg.fx_data.test_table;
 ```
 
-**Access Points** (after port-forwarding):
-- Trino UI: `make port-forward-trino` → http://localhost:8080
-- MinIO Console: `make port-forward-minio` → http://localhost:9001 (admin/minioadmin)
-- Lakekeeper API: `make port-forward-lakekeeper` → http://localhost:8181
-- Arroyo UI: `make port-forward-arroyo` → http://localhost:5115
-- Kafka: localhost:9092 (directly accessible)
+**Access Points**:
+- **Trino UI**: http://trino.local.platform:8080 (requires: `kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80`)
+- **MinIO Console**: http://minio.local.platform:9001 (requires: `kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 9001:80`) | Credentials: admin/minioadmin
+- **Lakekeeper API**: http://lakekeeper.local.platform:8181 (requires: `kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8181:80`)
+- **Arroyo UI**: http://localhost:5115 (requires: `kubectl port-forward svc/arroyo -n data-arroyo 5115:80`)
+- **Kafka**: localhost:9092 (directly accessible)
+
+---
+
+## Cluster Health & Resilience
+
+### Health Checks (Automatic Pod Recovery)
+
+Every critical service has **liveness and readiness probes** that automatically detect and recover from failures:
+
+| Service | Probe Type | Trigger | Effect |
+|---------|-----------|---------|--------|
+| **Arroyo** | HTTP `/admin/status` | Checks every 10s | Pod restart if unhealthy for 30s |
+| **Lakekeeper** | HTTP `/health` | Checks every 5s | Pod restart if unhealthy for 25s |
+| **PostgreSQL** | Command `pg_isready` | Checks every 10s | Pod restart if unhealthy for 30s |
+| **Trino** | HTTP `/v1/info` + script | Checks every 10s | Pod restart if unhealthy for 30-60s |
+
+**What This Means**:
+- If a service crashes, Kubernetes **automatically restarts it** ✅
+- If a service becomes unresponsive, it's detected within **10-30 seconds**
+- Requests are only routed to **ready pods** (readiness probe controls load balancing)
+- You can safely rely on automatic recovery without manual intervention
+
+**Verify Probes Are Working**:
+```bash
+# Check if probes are configured
+kubectl describe pod <pod-name> -n <namespace>
+
+# Watch a pod restart automatically if you kill its process
+kubectl exec -it <pod-name> -n <namespace> -- kill 1
+kubectl get pods -n <namespace> -w  # Watch it restart
+```
+
+### Resource Limits (Prevent Resource Exhaustion)
+
+All services have CPU and memory limits to prevent one service from starving others:
+
+```bash
+# Check resource allocation
+kubectl describe node
+
+# Monitor actual usage
+kubectl top pods -A | grep data-
+```
+
+**If a service hits its memory limit**:
+- Kubernetes terminates it and restarts (same as crash)
+- Pod shows `OOMKilled` status
+- Check logs: `kubectl logs <pod-name> -n <namespace> --previous`
 
 ---
 
